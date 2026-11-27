@@ -367,6 +367,99 @@
       box-shadow: 0 2px 0 var(--err);
     }
 
+    .ans-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Timer Control Bar & Staff Overlay */
+    .timer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 9px 12px;
+      margin-bottom: 12px;
+      background: #f7f4ee;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .timer-readout {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    .timer-readout.running { color: var(--ok); }
+    .timer-readout.paused { color: var(--anchor); }
+
+    .btn-timer {
+      border: none;
+      background: var(--ok);
+      color: #fff;
+      border-radius: 9px;
+      padding: 7px 14px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-timer.running { background: var(--anchor); }
+    .btn-timer:hover { opacity: 0.9; }
+
+    .staff-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 253, 249, 0.92);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      text-align: center;
+      z-index: 5;
+    }
+
+    .staff-overlay.hidden { display: none; }
+
+    .overlay-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .overlay-sub {
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-width: 340px;
+    }
+
+    .btn-overlay-start {
+      margin-top: 4px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 999px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(184, 93, 59, 0.28);
+    }
+
+    .btn-overlay-start:hover { opacity: 0.92; }
+
     /* Mode B Hint */
     .place-hint {
       margin-top: 12px;
@@ -563,7 +656,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.2 · 阶段一（多端云同步）</span>
+      <span class="badge-ver">v1.3 · 阶段一（精准计时 + 云同步）</span>
     </header>
 
     <!-- Cloud Sync Card -->
@@ -667,16 +760,26 @@
 
     <!-- Main Practice Card -->
     <div class="card">
-      <div class="prompt-bar">
-        <div class="prompt-main" id="promptMain">请识别五线谱上的音符</div>
-        <div style="display:flex; gap:8px;">
+      <div class="timer-bar">
+        <div class="timer-readout" id="timerReadout">⏱ 未开始计时（停留不计入用时）</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
           <button class="icon-btn" id="btnReplay">🔊 听音高</button>
           <button class="icon-btn" id="btnSkip">换一题 ↻</button>
         </div>
       </div>
 
+      <div class="prompt-bar">
+        <div class="prompt-main" id="promptMain">点击「开始计时」后显示题目</div>
+      </div>
+
       <div class="staff-wrap" id="staffWrap">
         <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="staff-overlay" id="staffOverlay">
+          <div class="overlay-title" id="overlayTitle">准备好了吗？</div>
+          <div class="overlay-sub" id="overlaySub">点击下方按钮才会显示音符并开始计时，停留在本页面不会计入平均反应时间。</div>
+          <button class="btn-overlay-start" id="btnOverlayStart">▶ 开始计时练习</button>
+        </div>
       </div>
 
       <!-- Mode A / Anchors Answer Buttons -->
@@ -991,11 +1094,14 @@
       weakMap: {},
 
       unsyncedAnswers: 0,
-      syncing: false
+      syncing: false,
+      timerState: 'idle', // 'idle' | 'running' | 'paused'
+      pauseReason: ''
     };
 
     let autoNextTimer = null;
     let syncDebounceTimer = null;
+    let liveTimerInterval = null;
 
     function recomputeAggregates() {
       let total = 0, correctCount = 0, totalTimeMs = 0, bestStreak = 0;
@@ -1484,8 +1590,122 @@
       return pool;
     }
 
+    function getCurrentElapsedMs() {
+      if (!state.current) return 0;
+      let ms = state.current.accumulatedMs || 0;
+      if (state.timerState === 'running' && !state.current.answered && state.current.segmentStart !== null) {
+        ms += performance.now() - state.current.segmentStart;
+      }
+      return ms;
+    }
+
+    function stopTimerTick() {
+      if (liveTimerInterval) {
+        clearInterval(liveTimerInterval);
+        liveTimerInterval = null;
+      }
+    }
+
+    function startTimerTick() {
+      stopTimerTick();
+      liveTimerInterval = setInterval(updateTimerReadoutOnly, 100);
+    }
+
+    function updateTimerReadoutOnly() {
+      const readout = document.getElementById('timerReadout');
+      if (!readout) return;
+      const sec = (getCurrentElapsedMs() / 1000).toFixed(1);
+      if (state.timerState === 'idle') {
+        readout.className = 'timer-readout';
+        readout.textContent = '⏱ 未开始计时（停留不计入用时）';
+      } else if (state.timerState === 'running') {
+        readout.className = 'timer-readout running';
+        readout.textContent = state.current && state.current.answered
+          ? `⏱ 本题完成：${(getCurrentElapsedMs() / 1000).toFixed(2)}s`
+          : `⏱ 计时中：${sec}s`;
+      } else {
+        readout.className = 'timer-readout paused';
+        readout.textContent = `⏸ 已暂停（本题已用 ${sec}s）`;
+      }
+    }
+
+    function updateTimerUI() {
+      const toggleBtn = document.getElementById('btnTimerToggle');
+      const overlay = document.getElementById('staffOverlay');
+      const ovTitle = document.getElementById('overlayTitle');
+      const ovSub = document.getElementById('overlaySub');
+      const ovBtn = document.getElementById('btnOverlayStart');
+      const ansBtns = document.querySelectorAll('.ans-btn');
+      const staffWrap = document.getElementById('staffWrap');
+
+      updateTimerReadoutOnly();
+
+      if (state.timerState === 'running') {
+        toggleBtn.textContent = '⏸ 暂停计时';
+        toggleBtn.classList.add('running');
+        overlay.classList.add('hidden');
+        ansBtns.forEach(b => { b.disabled = Boolean(state.current && state.current.answered); });
+        if (state.mode === 'place') staffWrap.classList.add('interactive');
+      } else if (state.timerState === 'paused') {
+        const sec = (getCurrentElapsedMs() / 1000).toFixed(1);
+        toggleBtn.textContent = '▶ 继续计时';
+        toggleBtn.classList.remove('running');
+        overlay.classList.remove('hidden');
+        ovTitle.textContent = state.pauseReason || '已暂停计时';
+        ovSub.textContent = state.current && state.current.answered
+          ? '点击继续将直接进入下一题并从 0.0s 重新计时。'
+          : `当前已停在 ${sec}s，暂停期间不计入答题用时；点击继续后从 ${sec}s 接着算。`;
+        ovBtn.textContent = '▶ 继续计时';
+        ansBtns.forEach(b => { b.disabled = true; });
+        staffWrap.classList.remove('interactive');
+      } else {
+        toggleBtn.textContent = '▶ 开始计时';
+        toggleBtn.classList.remove('running');
+        overlay.classList.remove('hidden');
+        ovTitle.textContent = '准备好了吗？';
+        ovSub.textContent = '点击开始后才显示题目并计时，未开始时停留页面不会计入平均用时。';
+        ovBtn.textContent = '▶ 开始计时练习';
+        ansBtns.forEach(b => { b.disabled = true; });
+        staffWrap.classList.remove('interactive');
+      }
+    }
+
+    function startOrResumeTimer() {
+      state.pauseReason = '';
+      if (state.timerState === 'idle') {
+        state.timerState = 'running';
+        nextQuestion();
+        return;
+      }
+      if (state.timerState === 'paused') {
+        state.timerState = 'running';
+        if (!state.current || state.current.answered) {
+          nextQuestion();
+        } else {
+          state.current.segmentStart = performance.now();
+          startTimerTick();
+          updateUIForQuestion();
+          renderStaff();
+        }
+      }
+    }
+
+    function pauseTimer(reason = '') {
+      if (state.timerState !== 'running') return;
+      clearTimeout(autoNextTimer);
+      if (state.current && !state.current.answered && state.current.segmentStart !== null) {
+        state.current.accumulatedMs += performance.now() - state.current.segmentStart;
+        state.current.segmentStart = null;
+      }
+      state.timerState = 'paused';
+      state.pauseReason = reason;
+      stopTimerTick();
+      updateUIForQuestion();
+    }
+
     function nextQuestion() {
       clearTimeout(autoNextTimer);
+      stopTimerTick();
       const pool = buildPool();
       let pick = pool[Math.floor(Math.random() * pool.length)];
       // 尽量避免连续两题完全相同
@@ -1496,16 +1716,19 @@
         }
       }
 
+      const isRunning = state.timerState === 'running';
       state.current = {
         clef: pick.clef,
         d: pick.d,
-        startTime: performance.now(),
+        accumulatedMs: 0,
+        segmentStart: isRunning ? performance.now() : null,
         answered: false,
         wasCorrect: false
       };
       state.hoverD = null;
       state.placedResult = null;
 
+      if (isRunning) startTimerTick();
       updateUIForQuestion();
       renderStaff();
     }
@@ -1521,36 +1744,57 @@
       const fbTxt = document.getElementById('feedbackText');
       const btnNext = document.getElementById('btnNext');
 
-      fb.className = 'feedback';
-      btnNext.style.display = 'none';
+      if (!state.current.answered) {
+        fb.className = 'feedback';
+        btnNext.style.display = 'none';
+        document.querySelectorAll('.ans-btn').forEach(b => {
+          b.classList.remove('correct', 'wrong');
+        });
+      }
 
-      // 重置按钮样式
-      document.querySelectorAll('.ans-btn').forEach(b => {
-        b.classList.remove('correct', 'wrong');
-        b.disabled = false;
-      });
+      if (state.timerState !== 'running') {
+        promptEl.innerHTML = state.timerState === 'paused'
+          ? `⏸ 计时已暂停 <span class="clef-tag">${CLEF_META[clef].name}</span>`
+          : `准备就绪：点击「▶ 开始计时」显示题目 <span class="clef-tag">${CLEF_META[clef].name}</span>`;
+        ansGrid.style.display = state.mode === 'place' ? 'none' : 'grid';
+        placeHint.style.display = state.mode === 'place' ? 'block' : 'none';
+        staffWrap.classList.remove('interactive');
+        if (!state.current.answered) {
+          fbTxt.textContent = '当前未在计时，你可以放心调整难度/模式或先休息一下。';
+        }
+        updateTimerUI();
+        return;
+      }
 
       if (state.mode === 'place') {
         promptEl.innerHTML = `请在五线谱上点出：<span class="target-pill">${info.name}（${info.solfege}）</span><span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = 'none';
         placeHint.style.display = 'block';
         staffWrap.classList.add('interactive');
-        fbTxt.textContent = `小提示：先在脑子里定位 ${CLEF_META[clef].name} 最近的锚点，再直接点出线或间。`;
+        if (!state.current.answered) {
+          fbTxt.textContent = `小提示：先在脑子里定位 ${CLEF_META[clef].name} 最近的锚点，再直接点出线或间。`;
+        }
       } else {
         const modeTitle = state.mode === 'anchors' ? '⚡ 锚点闪电战：秒出这个音！' : '请识别这个音符：';
         promptEl.innerHTML = `${modeTitle} <span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = 'grid';
         placeHint.style.display = 'none';
         staffWrap.classList.remove('interactive');
-        fbTxt.textContent = '快捷键：键盘按 C–B 或 1–7 即可秒答。';
+        if (!state.current.answered) {
+          fbTxt.textContent = '快捷键：键盘按 C–B 或 1–7 秒答 · 按 P 键随时暂停/继续计时。';
+        }
       }
+      updateTimerUI();
     }
 
     function recordResult(isCorrect, detailText) {
-      const { clef, d, startTime } = state.current;
-      const rawElapsedMs = performance.now() - startTime;
-      // 单题计入平均耗时上限 20 秒，避免中途接电话/回消息拉垮统计
-      const cappedElapsedMs = Math.min(rawElapsedMs, 20000);
+      const { clef, d } = state.current;
+      const rawElapsedMs = getCurrentElapsedMs();
+      state.current.accumulatedMs = rawElapsedMs;
+      state.current.segmentStart = null;
+      stopTimerTick();
+
+      const cappedElapsedMs = Math.min(rawElapsedMs, 30000);
       const secStr = (rawElapsedMs / 1000).toFixed(2);
       const key = `${clef}:${d}`;
       const today = getTodayStr();
@@ -1589,6 +1833,7 @@
       renderWeakChips();
       renderHistory();
       renderStaff();
+      updateTimerUI();
       scheduleAutoSync();
 
       const fb = document.getElementById('feedbackBar');
@@ -1599,13 +1844,13 @@
       fbTxt.textContent = `${isCorrect ? '✓ 正确' : '✗ 再校准'}（${secStr}s）· ${detailText}`;
       btnNext.style.display = 'inline-block';
 
-      if (isCorrect && state.autoNext) {
+      if (isCorrect && state.autoNext && state.timerState === 'running') {
         autoNextTimer = setTimeout(nextQuestion, 820);
       }
     }
 
     function submitReadAnswer(letterIdx) {
-      if (!state.current || state.current.answered) return;
+      if (state.timerState !== 'running' || !state.current || state.current.answered) return;
       const info = dToInfo(state.current.d);
       const isCorrect = letterIdx === info.idx;
 
@@ -1619,7 +1864,7 @@
     }
 
     function submitPlaceAnswer(clickedD) {
-      if (!state.current || state.current.answered) return;
+      if (state.timerState !== 'running' || !state.current || state.current.answered) return;
       const isCorrect = clickedD === state.current.d;
       state.placedResult = { clickedD, isCorrect };
       const targetInfo = dToInfo(state.current.d);
@@ -1748,7 +1993,7 @@
     }
 
     svg.addEventListener('pointermove', (e) => {
-      if (state.mode !== 'place' || !state.current || state.current.answered) return;
+      if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
       const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
       if (d !== state.hoverD) {
         state.hoverD = d;
@@ -1764,7 +2009,7 @@
     });
 
     svg.addEventListener('click', (e) => {
-      if (state.mode !== 'place' || !state.current || state.current.answered) return;
+      if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
       const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
       submitPlaceAnswer(d);
     });
@@ -1810,11 +2055,23 @@
       persist();
     });
 
-    document.getElementById('btnReplay').addEventListener('click', () => {
-      if (state.current) playPianoNote(dToInfo(state.current.d).freq);
+    document.getElementById('btnTimerToggle').addEventListener('click', () => {
+      if (state.timerState === 'running') pauseTimer('已手动暂停计时');
+      else startOrResumeTimer();
     });
-    document.getElementById('btnSkip').addEventListener('click', nextQuestion);
-    document.getElementById('btnNext').addEventListener('click', nextQuestion);
+    document.getElementById('btnOverlayStart').addEventListener('click', startOrResumeTimer);
+
+    document.getElementById('btnReplay').addEventListener('click', () => {
+      if (state.timerState === 'running' && state.current) playPianoNote(dToInfo(state.current.d).freq);
+    });
+    document.getElementById('btnSkip').addEventListener('click', () => {
+      if (state.timerState === 'running') nextQuestion();
+      else startOrResumeTimer();
+    });
+    document.getElementById('btnNext').addEventListener('click', () => {
+      if (state.timerState === 'running') nextQuestion();
+      else startOrResumeTimer();
+    });
 
     document.getElementById('btnCopyReport').addEventListener('click', async () => {
       const text = buildDailyReportText();
@@ -1876,25 +2133,41 @@
       setSyncStatus('', '已清除本机令牌（仅保存在本设备）');
     });
 
-    // 页面切回后台前尽力触发同步
+    // 页面切回后台/锁屏时自动暂停计时，并尽力触发同步
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden' && syncCfg.token && state.unsyncedAnswers > 0) {
-        syncWithGitHub({ pullOnly: false });
+      if (document.visibilityState === 'hidden') {
+        if (state.timerState === 'running') {
+          pauseTimer('切出页面已自动暂停');
+        }
+        if (syncCfg.token && state.unsyncedAnswers > 0) {
+          syncWithGitHub({ pullOnly: false });
+        }
       }
     });
 
     // 键盘快捷键
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+      const upper = e.key.toUpperCase();
+      if (upper === 'P') {
+        e.preventDefault();
+        if (state.timerState === 'running') pauseTimer('已手动暂停计时');
+        else startOrResumeTimer();
+        return;
+      }
       if (e.key === ' ' || e.key === 'Enter') {
+        if (state.timerState !== 'running') {
+          e.preventDefault();
+          startOrResumeTimer();
+          return;
+        }
         if (state.current && state.current.answered) {
           e.preventDefault();
           nextQuestion();
         }
         return;
       }
-      if (state.mode === 'place') return;
-      const upper = e.key.toUpperCase();
+      if (state.timerState !== 'running' || state.mode === 'place') return;
       const lIdx = LETTERS.indexOf(upper);
       if (lIdx !== -1) { submitReadAnswer(lIdx); return; }
       if (e.key >= '1' && e.key <= '7') { submitReadAnswer(Number(e.key) - 1); }
