@@ -406,6 +406,59 @@
       color: var(--ok);
     }
 
+    .history-section {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 0.84rem;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 6px;
+      font-size: 0.82rem;
+    }
+
+    .history-row {
+      display: grid;
+      grid-template-columns: 1.2fr 0.9fr 0.9fr 1fr;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 9px;
+      background: #faf8f4;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .history-row.head {
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 2px 10px;
+    }
+
+    .btn-primary-sm {
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 9px;
+      padding: 6px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary-sm:hover { opacity: 0.9; }
+
     .footer-tip {
       text-align: center;
       font-size: 0.78rem;
@@ -428,7 +481,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.0 · 阶段一（自然音与锚点）</span>
+      <span class="badge-ver">v1.1 · 阶段一（完整记录保存）</span>
     </header>
 
     <!-- Controls -->
@@ -468,19 +521,19 @@
     <div class="stats">
       <div class="stat-box">
         <div class="stat-val" id="statStreak">0</div>
-        <div class="stat-lbl">当前连胜</div>
+        <div class="stat-lbl" id="statBestLbl">当前连胜（最高 0）</div>
       </div>
       <div class="stat-box">
         <div class="stat-val" id="statAcc">--%</div>
-        <div class="stat-lbl">本轮正确率</div>
+        <div class="stat-lbl">累计正确率</div>
       </div>
       <div class="stat-box">
         <div class="stat-val" id="statAvg">--s</div>
         <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
       </div>
       <div class="stat-box">
-        <div class="stat-val" id="statTotal">0</div>
-        <div class="stat-lbl">已完成题数</div>
+        <div class="stat-val" id="statTotal">0 / 0</div>
+        <div class="stat-lbl">今日 / 累计题数</div>
       </div>
     </div>
 
@@ -512,14 +565,25 @@
       </div>
     </div>
 
-    <!-- Weak Notes Tracking -->
+    <!-- Weak Notes & Practice History -->
     <div class="card">
       <div class="weak-panel">
         <div class="weak-chips" id="weakChips">
           <strong style="color:var(--ink);">易错音记录：</strong>
           <span class="chip empty">暂无错音，继续保持！</span>
         </div>
-        <button class="icon-btn" id="btnResetStats">重置统计</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-primary-sm" id="btnCopyReport">📋 复制今日战报</button>
+          <button class="icon-btn" id="btnResetStats">重置统计</button>
+        </div>
+      </div>
+
+      <div class="history-section">
+        <div class="history-header">
+          <strong style="color:var(--ink);">最近 7 天练习记录（自动保存在本设备）</strong>
+          <span style="color:var(--muted); font-size:0.78rem;">提示：在 iPhone 上请固定从主屏幕图标打开以保留记录</span>
+        </div>
+        <div class="history-list" id="historyList"></div>
       </div>
     </div>
 
@@ -703,38 +767,65 @@
     }
 
     /* ============================================================
-       3. 应用状态与持久化（localStorage）
+       3. 应用状态与持久化（localStorage 完整记录 + 每日统计）
     ============================================================ */
     const STORAGE_KEY = 'kb_sightreading_v1';
     const saved = (() => {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
       catch { return {}; }
     })();
+    const savedPrefs = saved.prefs || {};
+
+    function getTodayStr() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
 
     const state = {
-      mode: 'read',        // 'read' | 'place' | 'anchors'
-      clefFilter: 'both',  // 'both' | 'treble' | 'bass'
-      range: 'core',       // 'near_anchors' | 'core' | 'extended' | 'weak'
-      showAnchors: true,
-      sound: true,
-      autoNext: true,
+      mode: savedPrefs.mode || 'read',             // 'read' | 'place' | 'anchors'
+      clefFilter: savedPrefs.clefFilter || 'both', // 'both' | 'treble' | 'bass'
+      range: savedPrefs.range || 'core',           // 'near_anchors' | 'core' | 'extended' | 'weak'
+      showAnchors: savedPrefs.showAnchors !== undefined ? savedPrefs.showAnchors : true,
+      sound: savedPrefs.sound !== undefined ? savedPrefs.sound : true,
+      autoNext: savedPrefs.autoNext !== undefined ? savedPrefs.autoNext : true,
 
       current: null,       // { clef, d, startTime, answered }
       hoverD: null,
       placedResult: null,  // { clickedD, isCorrect }
 
-      streak: 0,
-      total: 0,
-      correctCount: 0,
-      totalTimeMs: 0,
-      weakMap: saved.weakMap || {} // key: `${clef}:${d}` -> miss count
+      streak: Number(saved.streak) || 0,
+      bestStreak: Number(saved.bestStreak) || 0,
+      total: Number(saved.total) || 0,
+      correctCount: Number(saved.correctCount) || 0,
+      totalTimeMs: Number(saved.totalTimeMs) || 0,
+      weakMap: saved.weakMap || {}, // key: `${clef}:${d}` -> miss count
+      daily: saved.daily || {}      // key: 'YYYY-MM-DD' -> { total, correct, timeMs }
     };
 
     let autoNextTimer = null;
 
     function persist() {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ weakMap: state.weakMap }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          streak: state.streak,
+          bestStreak: state.bestStreak,
+          total: state.total,
+          correctCount: state.correctCount,
+          totalTimeMs: state.totalTimeMs,
+          weakMap: state.weakMap,
+          daily: state.daily,
+          prefs: {
+            mode: state.mode,
+            clefFilter: state.clefFilter,
+            range: state.range,
+            showAnchors: state.showAnchors,
+            sound: state.sound,
+            autoNext: state.autoNext
+          }
+        }));
       } catch {}
     }
 
@@ -1045,18 +1136,29 @@
 
     function recordResult(isCorrect, detailText) {
       const { clef, d, startTime } = state.current;
-      const elapsedMs = performance.now() - startTime;
-      const secStr = (elapsedMs / 1000).toFixed(2);
+      const rawElapsedMs = performance.now() - startTime;
+      // 单题计入平均耗时上限 20 秒，避免中途接电话/回消息拉垮统计
+      const cappedElapsedMs = Math.min(rawElapsedMs, 20000);
+      const secStr = (rawElapsedMs / 1000).toFixed(2);
       const key = `${clef}:${d}`;
+      const today = getTodayStr();
+
+      if (!state.daily[today]) {
+        state.daily[today] = { total: 0, correct: 0, timeMs: 0 };
+      }
 
       state.current.answered = true;
       state.current.wasCorrect = isCorrect;
       state.total += 1;
-      state.totalTimeMs += elapsedMs;
+      state.totalTimeMs += cappedElapsedMs;
+      state.daily[today].total += 1;
+      state.daily[today].timeMs += cappedElapsedMs;
 
       if (isCorrect) {
         state.correctCount += 1;
+        state.daily[today].correct += 1;
         state.streak += 1;
+        if (state.streak > state.bestStreak) state.bestStreak = state.streak;
         // 答对则减轻该音错题权重
         if (state.weakMap[key]) {
           state.weakMap[key] = Math.max(0, state.weakMap[key] - 1);
@@ -1072,6 +1174,7 @@
       persist();
       updateStats();
       renderWeakChips();
+      renderHistory();
       renderStaff();
 
       const fb = document.getElementById('feedbackBar');
@@ -1112,15 +1215,69 @@
     }
 
     /* ============================================================
-       6. 统计与易错音展示
+       6. 统计、每日记录与易错音展示
     ============================================================ */
     function updateStats() {
+      const todayStat = state.daily[getTodayStr()] || { total: 0, correct: 0, timeMs: 0 };
       document.getElementById('statStreak').textContent = state.streak;
-      document.getElementById('statTotal').textContent = state.total;
+      document.getElementById('statBestLbl').textContent = `当前连胜（最高 ${state.bestStreak}）`;
+      document.getElementById('statTotal').textContent = `${todayStat.total} / ${state.total}`;
       const acc = state.total ? Math.round((state.correctCount / state.total) * 100) + '%' : '--%';
       document.getElementById('statAcc').textContent = acc;
       const avg = state.total ? (state.totalTimeMs / state.total / 1000).toFixed(2) + 's' : '--s';
       document.getElementById('statAvg').textContent = avg;
+    }
+
+    function renderHistory() {
+      const wrap = document.getElementById('historyList');
+      const dates = Object.keys(state.daily).sort().reverse().slice(0, 7);
+      if (!dates.length) {
+        wrap.innerHTML = '<div style="color:var(--muted); padding:6px 2px;">完成第 1 题后，这里会自动记录你每天的题数、正确率与反应速度。</div>';
+        return;
+      }
+      let html = '<div class="history-row head"><span>日期</span><span>题数</span><span>正确率</span><span>平均反应</span></div>';
+      const today = getTodayStr();
+      for (const dt of dates) {
+        const d = state.daily[dt];
+        const acc = d.total ? Math.round((d.correct / d.total) * 100) + '%' : '--%';
+        const avg = d.total ? (d.timeMs / d.total / 1000).toFixed(2) + 's' : '--s';
+        html += `<div class="history-row">
+          <span><strong>${dt}${dt === today ? ' (今)' : ''}</strong></span>
+          <span>${d.total} 题</span>
+          <span>${acc}</span>
+          <span>${avg}</span>
+        </div>`;
+      }
+      wrap.innerHTML = html;
+    }
+
+    function buildDailyReportText() {
+      const today = getTodayStr();
+      const d = state.daily[today] || { total: 0, correct: 0, timeMs: 0 };
+      const acc = d.total ? Math.round((d.correct / d.total) * 100) + '%' : '0%';
+      const avg = d.total ? (d.timeMs / d.total / 1000).toFixed(2) + 's' : '--';
+      const weakTop = Object.entries(state.weakMap)
+        .filter(([, cnt]) => cnt > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([k, cnt]) => {
+          const [clef, ds] = k.split(':');
+          return `${clef === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${cnt}次)`;
+        });
+      return `【五线谱识谱战报 ${today}】今日完成 ${d.total} 题，正确率 ${acc}，平均反应 ${avg}，历史最高连胜 ${state.bestStreak}（累计 ${state.total} 题）。高频易错音：${weakTop.length ? weakTop.join('、') : '无'}。请帮我归档进今天的知识库打卡记录！`;
+    }
+
+    function applySavedPrefsToUI() {
+      document.querySelectorAll('#modeGroup .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === state.mode);
+      });
+      document.querySelectorAll('#clefGroup .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.clef === state.clefFilter);
+      });
+      document.getElementById('rangeSelect').value = state.range;
+      document.getElementById('toggleAnchors').checked = state.showAnchors;
+      document.getElementById('toggleSound').checked = state.sound;
+      document.getElementById('toggleAutoNext').checked = state.autoNext;
     }
 
     function renderWeakChips() {
@@ -1201,6 +1358,7 @@
         document.querySelectorAll('#modeGroup .seg-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.mode = btn.dataset.mode;
+        persist();
         nextQuestion();
       });
     });
@@ -1211,23 +1369,28 @@
         document.querySelectorAll('#clefGroup .seg-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.clefFilter = btn.dataset.clef;
+        persist();
         nextQuestion();
       });
     });
 
     document.getElementById('rangeSelect').addEventListener('change', (e) => {
       state.range = e.target.value;
+      persist();
       nextQuestion();
     });
     document.getElementById('toggleAnchors').addEventListener('change', (e) => {
       state.showAnchors = e.target.checked;
+      persist();
       renderStaff();
     });
     document.getElementById('toggleSound').addEventListener('change', (e) => {
       state.sound = e.target.checked;
+      persist();
     });
     document.getElementById('toggleAutoNext').addEventListener('change', (e) => {
       state.autoNext = e.target.checked;
+      persist();
     });
 
     document.getElementById('btnReplay').addEventListener('click', () => {
@@ -1235,12 +1398,28 @@
     });
     document.getElementById('btnSkip').addEventListener('click', nextQuestion);
     document.getElementById('btnNext').addEventListener('click', nextQuestion);
+
+    document.getElementById('btnCopyReport').addEventListener('click', async () => {
+      const text = buildDailyReportText();
+      const btn = document.getElementById('btnCopyReport');
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = '✓ 已复制，直接发给 AI 即可';
+        setTimeout(() => { btn.textContent = '📋 复制今日战报'; }, 2200);
+      } catch {
+        window.prompt('长按全选复制发给 AI：', text);
+      }
+    });
+
     document.getElementById('btnResetStats').addEventListener('click', () => {
-      state.streak = 0; state.total = 0; state.correctCount = 0; state.totalTimeMs = 0;
+      if (!confirm('确定要清空所有练习统计、每日历史和易错音记录吗？')) return;
+      state.streak = 0; state.bestStreak = 0; state.total = 0; state.correctCount = 0; state.totalTimeMs = 0;
       state.weakMap = {};
+      state.daily = {};
       persist();
       updateStats();
       renderWeakChips();
+      renderHistory();
     });
 
     // 键盘快捷键
@@ -1262,8 +1441,10 @@
 
     // 启动
     initAnswerButtons();
+    applySavedPrefsToUI();
     updateStats();
     renderWeakChips();
+    renderHistory();
     nextQuestion();
   </script>
 </body>
