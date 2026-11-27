@@ -1013,7 +1013,7 @@
   <div class="app">
     <header>
       <h1>五线谱识谱训练器</h1>
-      <span class="badge-ver">v1.8.1 · 单屏零滚屏</span>
+      <span class="badge-ver">v1.8.2 · 单屏零滚屏</span>
     </header>
 
     <!-- ==================== TAB 1: 训练模块 ==================== -->
@@ -1059,8 +1059,8 @@
           <div class="timer-readout" id="timerReadout">⏱ 未开始计时</div>
           <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
             <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
-            <button class="icon-btn" id="btnReplay">🔊</button>
-            <button class="icon-btn" id="btnSkip">↻</button>
+            <button class="icon-btn" id="btnReplay">听音</button>
+            <button class="icon-btn" id="btnSkip">换题</button>
           </div>
         </div>
 
@@ -3000,12 +3000,17 @@
       updateUIForQuestion();
     });
 
-    // 模式切换
+    // 模式切换：各训练模式计时独立，切换模式立即重置回「待开始计时」界面
     document.querySelectorAll('#modeGroup .seg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (state.mode === btn.dataset.mode) return;
         document.querySelectorAll('#modeGroup .seg-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.mode = btn.dataset.mode;
+        clearTimeout(autoNextTimer);
+        stopTimerTick();
+        state.timerState = 'idle';
+        state.pauseReason = '';
         persist();
         nextQuestion();
       });
