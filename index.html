@@ -175,17 +175,51 @@
     /* Controls Bar */
     .controls {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .controls-row2 {
+      display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+
+    .seg-group.full-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      width: 100%;
+    }
+
+    .opts-drawer {
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .opts-drawer.open { display: flex; }
+
+    .opts-drawer label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      user-select: none;
     }
 
     .seg-group {
       display: inline-flex;
       background: #f1ede4;
       padding: 3px;
-      border-radius: 11px;
+      border-radius: 10px;
       gap: 2px;
     }
 
@@ -193,12 +227,13 @@
       border: none;
       background: transparent;
       color: var(--muted);
-      padding: 7px 12px;
-      font-size: 0.86rem;
+      padding: 6px 9px;
+      font-size: 0.82rem;
       font-weight: 600;
-      border-radius: 8px;
+      border-radius: 7px;
       cursor: pointer;
       transition: all 0.15s ease;
+      white-space: nowrap;
     }
 
     .seg-btn.active {
@@ -367,7 +402,7 @@
     .staff-wrap.place-mode svg#staffSvg {
       width: auto;
       max-width: 100%;
-      max-height: 36vh;
+      max-height: 33vh;
     }
 
     /* Mode B: 防误触微调与确认控制条 */
@@ -404,11 +439,16 @@
       background: var(--ok);
       color: #fff;
       border-radius: 12px;
-      padding: 13px 10px;
-      font-size: 0.96rem;
+      padding: 11px 10px;
+      font-size: 0.94rem;
       font-weight: 800;
       cursor: pointer;
       box-shadow: 0 3px 10px rgba(38, 115, 77, 0.25);
+    }
+
+    .btn-confirm-place.is-next {
+      background: var(--ink);
+      box-shadow: 0 3px 10px rgba(30, 35, 32, 0.24);
     }
 
     .btn-confirm-place:disabled {
@@ -973,41 +1013,43 @@
   <div class="app">
     <header>
       <h1>五线谱识谱训练器</h1>
-      <span class="badge-ver">v1.8 · 三栏单屏版</span>
+      <span class="badge-ver">v1.8.1 · 单屏零滚屏</span>
     </header>
 
     <!-- ==================== TAB 1: 训练模块 ==================== -->
     <section class="tab-panel active" id="panelPractice">
-      <!-- 练习模式、难度与开关 -->
+      <!-- 练习模式、难度与折叠开关 -->
       <div class="card compact">
-        <div class="controls" style="gap:6px;">
-          <div class="seg-group" id="modeGroup">
+        <div class="controls">
+          <div class="seg-group full-3" id="modeGroup">
             <button class="seg-btn active" data-mode="read">看谱认音</button>
             <button class="seg-btn" data-mode="place">看音点谱</button>
             <button class="seg-btn" data-mode="anchors">锚点特训</button>
           </div>
 
-          <div class="seg-group" id="clefGroup">
-            <button class="seg-btn active" data-clef="both">高低混合</button>
-            <button class="seg-btn" data-clef="treble">高音</button>
-            <button class="seg-btn" data-clef="bass">低音</button>
+          <div class="controls-row2">
+            <div class="seg-group" id="clefGroup">
+              <button class="seg-btn active" data-clef="both">混合</button>
+              <button class="seg-btn" data-clef="treble">高音</button>
+              <button class="seg-btn" data-clef="bass">低音</button>
+            </div>
+
+            <select id="rangeSelect" style="flex:1; min-width:0; font-size:0.8rem; padding:5px 6px;">
+              <option value="near_anchors">锚点周边 (±2步)</option>
+              <option value="core" selected>常用音域 (C2–C6)</option>
+              <option value="extended">加线扩展 (A1–E6)</option>
+              <option value="weak">🎯 重点训练(错+慢)</option>
+            </select>
+
+            <button class="icon-btn" id="btnToggleOpts" style="padding:5px 8px; font-size:0.78rem; white-space:nowrap;">选项 ▾</button>
           </div>
         </div>
 
-        <div class="sub-controls">
-          <label>
-            音域：
-            <select id="rangeSelect">
-              <option value="near_anchors">锚点周边（±2 步）</option>
-              <option value="core" selected>常用音域（C2–C6）</option>
-              <option value="extended">加线扩展（A1–E6）</option>
-              <option value="weak">🎯 重点训练（错+慢）</option>
-            </select>
-          </label>
-
-          <label><input type="checkbox" id="toggleAnchors" checked /> 锚点线</label>
-          <label><input type="checkbox" id="toggleSound" checked /> 发声</label>
-          <label><input type="checkbox" id="toggleAutoNext" checked /> 自动下题</label>
+        <div class="opts-drawer" id="optsDrawer">
+          <label><input type="checkbox" id="toggleAnchors" checked /> 7 锚点线</label>
+          <label><input type="checkbox" id="toggleSound" checked /> 钢琴发声</label>
+          <label><input type="checkbox" id="toggleAutoNext" checked /> 答对自动下题</label>
+          <label><input type="checkbox" id="toggleConfirmPlace" checked /> 点谱防误触确认</label>
         </div>
       </div>
 
@@ -1017,13 +1059,13 @@
           <div class="timer-readout" id="timerReadout">⏱ 未开始计时</div>
           <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
             <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
-            <button class="icon-btn" id="btnReplay">🔊 听音</button>
-            <button class="icon-btn" id="btnSkip">↻ 换题</button>
+            <button class="icon-btn" id="btnReplay">🔊</button>
+            <button class="icon-btn" id="btnSkip">↻</button>
           </div>
         </div>
 
-        <div class="prompt-bar" style="margin-bottom:6px;">
-          <div class="prompt-main" id="promptMain" style="font-size:1.02rem;">点击「开始计时」后显示题目</div>
+        <div class="prompt-bar" style="margin-bottom:5px;">
+          <div class="prompt-main" id="promptMain" style="font-size:0.98rem;">点击「开始计时」后显示题目</div>
         </div>
 
         <div class="staff-wrap" id="staffWrap">
@@ -1036,22 +1078,18 @@
         </div>
 
         <!-- Mode A / Anchors Answer Buttons -->
-        <div class="answer-grid" id="answerGrid" style="margin-top:10px;"></div>
+        <div class="answer-grid" id="answerGrid" style="margin-top:8px;"></div>
 
-        <!-- Mode B Place Controls (防误触微调 + 确认) -->
-        <div class="place-controls" id="placeControls" style="margin-top:9px;">
+        <!-- Mode B Place Controls (防误触微调 + 原地确认/下一题) -->
+        <div class="place-controls" id="placeControls" style="margin-top:8px;">
           <div class="place-btn-row">
-            <button class="btn-nudge" id="btnNudgeUp" disabled>▲ 上移</button>
-            <button class="btn-confirm-place" id="btnConfirmPlace" disabled>先在谱上点选位置</button>
-            <button class="btn-nudge" id="btnNudgeDown" disabled>▼ 下移</button>
-          </div>
-          <div class="place-opt-row">
-            <span id="placeHint">按住谱面上下拖动选位，可点左右微调再确认</span>
-            <label><input type="checkbox" id="toggleConfirmPlace" checked /> 防误触确认</label>
+            <button class="btn-nudge" id="btnNudgeUp" disabled style="padding:11px 6px;">▲ 上移</button>
+            <button class="btn-confirm-place" id="btnConfirmPlace" disabled>请点选谱面</button>
+            <button class="btn-nudge" id="btnNudgeDown" disabled style="padding:11px 6px;">▼ 下移</button>
           </div>
         </div>
 
-        <div class="feedback" id="feedbackBar" style="margin-top:9px; min-height:42px; padding:8px 11px; font-size:0.84rem;">
+        <div class="feedback" id="feedbackBar" style="margin-top:8px; min-height:38px; padding:7px 10px; font-size:0.82rem;">
           <span id="feedbackText">提示：用 7 个对称锚点秒推，不要从中央 C 逐格数！</span>
           <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
         </div>
@@ -2304,16 +2342,29 @@
       const btnDown = document.getElementById('btnNudgeDown');
       const btnConfirm = document.getElementById('btnConfirmPlace');
       if (!btnUp || !btnDown || !btnConfirm) return;
-      const canAct = state.timerState === 'running' && state.mode === 'place' && state.current && !state.current.answered;
+      const isPlace = state.mode === 'place';
+      const isRunning = state.timerState === 'running';
+      const isAnswered = Boolean(state.current && state.current.answered);
+      const canAct = isRunning && isPlace && state.current && !isAnswered;
       const hasSel = canAct && state.selectedD !== null;
+
       btnUp.disabled = !canAct;
       btnDown.disabled = !canAct;
+
+      if (isRunning && isPlace && isAnswered) {
+        btnConfirm.disabled = false;
+        btnConfirm.classList.add('is-next');
+        btnConfirm.textContent = '下一题 →';
+        return;
+      }
+
+      btnConfirm.classList.remove('is-next');
       btnConfirm.disabled = !hasSel;
       if (hasSel) {
         const pos = getStaffPositionLabel(state.current.clef, state.selectedD);
-        btnConfirm.textContent = `✓ 确认落音（${pos}）`;
+        btnConfirm.textContent = `✓ 确认（${pos}）`;
       } else {
-        btnConfirm.textContent = canAct ? '请在谱上点选或拖动定位' : '点击开始计时后作答';
+        btnConfirm.textContent = canAct ? '点选或拖动谱面定位' : '开始计时后作答';
       }
     }
 
@@ -2456,7 +2507,8 @@
         ? '✗ 再校准'
         : (isSlowThisTime ? `✓ 正确但偏慢（>${thresholdSec}s，已重点关注）` : '✓ 熟练');
       fbTxt.textContent = `${statusLabel}（${secStr}s）· ${detailText}`;
-      btnNext.style.display = 'inline-block';
+      // 点谱模式下，中间大按钮已原地变为「下一题 →」，底部栏隐藏重复小按钮省空间
+      btnNext.style.display = state.mode === 'place' ? 'none' : 'inline-block';
 
       if (isCorrect && state.autoNext && state.timerState === 'running') {
         autoNextTimer = setTimeout(nextQuestion, 820);
@@ -2926,9 +2978,20 @@
       }
     });
 
+    document.getElementById('btnToggleOpts').addEventListener('click', () => {
+      const drawer = document.getElementById('optsDrawer');
+      const btn = document.getElementById('btnToggleOpts');
+      const open = drawer.classList.toggle('open');
+      btn.textContent = open ? '选项 ▴' : '选项 ▾';
+    });
+
     document.getElementById('btnNudgeUp').addEventListener('click', () => nudgeSelectedNote(1));
     document.getElementById('btnNudgeDown').addEventListener('click', () => nudgeSelectedNote(-1));
     document.getElementById('btnConfirmPlace').addEventListener('click', () => {
+      if (state.current && state.current.answered) {
+        nextQuestion();
+        return;
+      }
       if (state.selectedD !== null) submitPlaceAnswer(state.selectedD);
     });
     document.getElementById('toggleConfirmPlace').addEventListener('change', (e) => {
