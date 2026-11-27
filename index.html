@@ -1013,7 +1013,7 @@
   <div class="app">
     <header>
       <h1>五线谱识谱训练器</h1>
-      <span class="badge-ver">v1.9 · 真钢琴采样音色</span>
+      <span class="badge-ver">v1.9.1</span>
     </header>
 
     <!-- ==================== TAB 1: 训练模块 ==================== -->
@@ -1150,10 +1150,10 @@
             <span class="sync-dot" id="syncDot"></span>
             <span id="syncStatusText">未开启 GitHub 云同步（仅保存在本设备）</span>
           </div>
-          <button class="icon-btn" id="btnToggleSyncConfig">展开 / 收起配置</button>
+          <button class="icon-btn" id="btnToggleSyncConfig">展开配置 ▾</button>
         </div>
 
-        <div class="sync-drawer open" id="syncDrawer">
+        <div class="sync-drawer" id="syncDrawer">
           <div style="color:var(--muted); font-size:0.8rem; line-height:1.5;">
             使用仅限 <strong>knowledge-base</strong> 单仓库读写权限的 GitHub Token，将你的 iPhone 与 Mac 练习记录实时合并同步到私有知识库。令牌仅保存在本机浏览器中，绝不上传至公开页面。
           </div>
@@ -3298,7 +3298,10 @@
 
     document.getElementById('btnToggleSyncConfig').addEventListener('click', () => {
       fillSyncForm();
-      document.getElementById('syncDrawer').classList.toggle('open');
+      const drawer = document.getElementById('syncDrawer');
+      const btn = document.getElementById('btnToggleSyncConfig');
+      const isOpen = drawer.classList.toggle('open');
+      btn.textContent = isOpen ? '收起配置 ▴' : '展开配置 ▾';
     });
 
     document.getElementById('btnSyncNow').addEventListener('click', () => {
@@ -3315,7 +3318,10 @@
       saveSyncCfg();
       persist();
       const ok = await syncWithGitHub({ pullOnly: false });
-      if (ok) document.getElementById('syncDrawer').classList.remove('open');
+      if (ok) {
+        document.getElementById('syncDrawer').classList.remove('open');
+        document.getElementById('btnToggleSyncConfig').textContent = '展开配置 ▾';
+      }
     });
 
     document.getElementById('btnClearSync').addEventListener('click', () => {
