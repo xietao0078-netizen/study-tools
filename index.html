@@ -1013,7 +1013,7 @@
   <div class="app">
     <header>
       <h1>五线谱识谱训练器</h1>
-      <span class="badge-ver">v1.8.3 · 单屏零滚屏</span>
+      <span class="badge-ver">v1.9 · 真钢琴采样音色</span>
     </header>
 
     <!-- ==================== TAB 1: 训练模块 ==================== -->
@@ -1187,6 +1187,21 @@
       </div>
 
       <div class="card">
+        <h2 class="settings-group-title"><span>🎹 真实钢琴音源</span></h2>
+        <div class="sync-status" style="margin-bottom:10px;">
+          <span class="sync-dot busy" id="audioDot"></span>
+          <span id="audioStatusText">正在后台预加载 Salamander 三角钢琴真实采样...</span>
+        </div>
+        <div class="settings-btn-row">
+          <button class="btn-primary-sm" id="btnTestC4">试听中央 C (C4)</button>
+          <button class="icon-btn" id="btnTestArp">试听 C 大调琶音</button>
+        </div>
+        <div class="tips-box" style="margin-top:8px;">
+          采用开源 Yamaha C5 音乐会三角钢琴多点真实录音采样（10 组跨全音域采样，浏览器自动缓存）；断网时无缝切换为仿真钢琴音色。
+        </div>
+      </div>
+
+      <div class="card">
         <h2 class="settings-group-title"><span>📋 数据导出与管理</span></h2>
         <div class="settings-btn-row">
           <button class="btn-primary-sm" id="btnCopyReport">📋 复制今日战报</button>
@@ -1346,108 +1361,233 @@
     }
 
     /* ============================================================
-       2. Web Audio 柔和钢琴音色合成器（iOS Safari/PWA 唤醒与静音键加固）
+       2. 真实音乐会三角钢琴音源引擎（Salamander Grand Piano 真实采样 + 离线物理仿真兜底）
     ============================================================ */
     let audioCtx = null;
+    const PIANO_SAMPLES = [
+      { name: 'C4',  midi: 60 },
+      { name: 'Fs4', midi: 66 },
+      { name: 'C5',  midi: 72 },
+      { name: 'Fs3', midi: 54 },
+      { name: 'C3',  midi: 48 },
+      { name: 'Fs5', midi: 78 },
+      { name: 'C6',  midi: 84 },
+      { name: 'Fs2', midi: 42 },
+      { name: 'C2',  midi: 36 },
+      { name: 'A1',  midi: 33 }
+    ];
+    const SAMPLE_CDNS = [
+      (name) => `https://tonejs.github.io/audio/salamander/${name}.mp3`,
+      (name) => `https://cdn.jsdelivr.net/gh/nbrosowsky/tonejs-instruments@master/samples/piano/${name}.mp3`
+    ];
+    const rawSampleBuffers = new Map();     // midi -> ArrayBuffer
+    const decodedSampleBuffers = new Map(); // midi -> AudioBuffer
+    let sampleLoadingStarted = false;
+    let sampleFailedCount = 0;
 
-    function setPlaybackAudioSession() {
-      try {
-        if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
-          navigator.audioSession.type = 'playback';
-        }
-      } catch (e) {}
+    function updateAudioStatusUI() {
+      const dot = document.getElementById('audioDot');
+      const txt = document.getElementById('audioStatusText');
+      if (!dot || !txt) return;
+      const ready = decodedSampleBuffers.size;
+      const fetched = rawSampleBuffers.size;
+      const total = PIANO_SAMPLES.length;
+      if (ready >= total) {
+        dot.className = 'sync-dot ok';
+        txt.textContent = `Salamander 三角钢琴真实采样已就绪 (${ready}/${total})`;
+      } else if (ready > 0) {
+        dot.className = 'sync-dot ok';
+        txt.textContent = `真实钢琴采样已启用，后台补充中 (${ready}/${total})`;
+      } else if (fetched > 0) {
+        dot.className = 'sync-dot ok';
+        txt.textContent = `真实钢琴采样已下载 (${fetched}/${total})，首次点按即可发声`;
+      } else if (sampleFailedCount >= total) {
+        dot.className = 'sync-dot';
+        txt.textContent = '当前为离线仿真钢琴音色（联网后自动加载真实采样）';
+      } else {
+        dot.className = 'sync-dot busy';
+        txt.textContent = `正在预加载三角钢琴真实采样 (${fetched}/${total})...`;
+      }
     }
 
-    async function ensureAudioCtx() {
-      setPlaybackAudioSession();
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return null;
-      if (!audioCtx || audioCtx.state === 'closed' || audioCtx.state === 'interrupted') {
-        try { if (audioCtx && audioCtx.state !== 'closed') audioCtx.close(); } catch (e) {}
-        audioCtx = new Ctx();
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) audioCtx = new Ctx();
       }
-      if (audioCtx.state !== 'running') {
-        try {
-          await audioCtx.resume();
-        } catch (e) {
-          try {
-            audioCtx = new Ctx();
-            await audioCtx.resume();
-          } catch (e2) {
-            return null;
-          }
-        }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
       }
       return audioCtx;
     }
 
-    function unlockAudioGesture() {
-      setPlaybackAudioSession();
+    async function decodeSampleIfReady(midi) {
+      if (!audioCtx || decodedSampleBuffers.has(midi) || !rawSampleBuffers.has(midi)) return;
+      const raw = rawSampleBuffers.get(midi);
       try {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return;
-        if (!audioCtx || audioCtx.state === 'closed' || audioCtx.state === 'interrupted') {
-          audioCtx = new Ctx();
+        // slice(0) 避免 decodeAudioData 分离原始 ArrayBuffer
+        const buf = await audioCtx.decodeAudioData(raw.slice(0));
+        decodedSampleBuffers.set(midi, buf);
+        updateAudioStatusUI();
+      } catch (e) {}
+    }
+
+    async function decodeAllFetchedSamples() {
+      if (!audioCtx) return;
+      const tasks = [];
+      for (const s of PIANO_SAMPLES) {
+        if (rawSampleBuffers.has(s.midi) && !decodedSampleBuffers.has(s.midi)) {
+          tasks.push(decodeSampleIfReady(s.midi));
         }
-        if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
-        // 播放 1 采样静音帧，彻底解锁 iOS Safari / PWA 音频上下文
-        const buf = audioCtx.createBuffer(1, 1, 22050);
-        const src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(audioCtx.destination);
-        src.start(0);
-      } catch (e) {}
+      }
+      await Promise.all(tasks);
     }
 
-    async function playPianoNote(freq, force = false) {
-      if (!state.sound && !force) return;
-      try {
-        const ctx = await ensureAudioCtx();
-        if (!ctx) return;
-        const now = ctx.currentTime + 0.005;
-        const master = ctx.createGain();
-        master.gain.setValueAtTime(0.001, now);
-        master.gain.linearRampToValueAtTime(0.32, now + 0.015);
-        master.gain.exponentialRampToValueAtTime(0.09, now + 0.35);
-        master.gain.exponentialRampToValueAtTime(0.0008, now + 1.15);
-        master.connect(ctx.destination);
-
-        // 叠合基频与轻微泛音，模拟温暖电钢音色
-        [
-          { mult: 1, type: 'triangle', gain: 0.75 },
-          { mult: 2, type: 'sine',     gain: 0.22 },
-          { mult: 3, type: 'sine',     gain: 0.07 }
-        ].forEach(h => {
-          const osc = ctx.createOscillator();
-          const g = ctx.createGain();
-          osc.type = h.type;
-          osc.frequency.setValueAtTime(freq * h.mult, now);
-          g.gain.setValueAtTime(h.gain, now);
-          osc.connect(g);
-          g.connect(master);
-          osc.start(now);
-          osc.stop(now + 1.2);
-        });
-      } catch (e) {}
+    async function fetchSingleSample(sample) {
+      for (const buildUrl of SAMPLE_CDNS) {
+        try {
+          const resp = await fetch(buildUrl(sample.name), { mode: 'cors' });
+          if (!resp.ok) continue;
+          const arr = await resp.arrayBuffer();
+          if (arr && arr.byteLength > 1024) {
+            rawSampleBuffers.set(sample.midi, arr);
+            updateAudioStatusUI();
+            if (audioCtx) await decodeSampleIfReady(sample.midi);
+            return;
+          }
+        } catch {}
+      }
+      sampleFailedCount += 1;
+      updateAudioStatusUI();
     }
 
-    async function playErrorTone() {
-      if (!state.sound) return;
-      try {
-        const ctx = await ensureAudioCtx();
-        if (!ctx) return;
-        const now = ctx.currentTime + 0.005;
+    function preloadPianoSamples() {
+      if (sampleLoadingStarted) return;
+      sampleLoadingStarted = true;
+      updateAudioStatusUI();
+      // 并发预加载全部 10 组音乐会三角钢琴采样（中音区优先）
+      PIANO_SAMPLES.forEach(s => { fetchSingleSample(s); });
+    }
+
+    // 首次用户触控/点击立刻解锁 iOS Safari AudioContext 并解码已下载采样
+    function unlockAudioOnGesture() {
+      const ctx = ensureAudioContext();
+      if (ctx) decodeAllFetchedSamples();
+    }
+    window.addEventListener('pointerdown', unlockAudioOnGesture, { once: true, passive: true });
+    window.addEventListener('keydown', unlockAudioOnGesture, { once: true, passive: true });
+
+    // 离线兜底：多弦微失谐 + 琴槌滤波包络仿真钢琴
+    function playSynthPianoFallback(ctx, freq, gainScale = 1) {
+      const now = ctx.currentTime;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(Math.min(5200, freq * 9), now);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(420, freq * 2.2), now + 0.55);
+      filter.Q.value = 0.7;
+
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.0008, now);
+      master.gain.linearRampToValueAtTime(0.32 * gainScale, now + 0.008);
+      master.gain.exponentialRampToValueAtTime(0.12 * gainScale, now + 0.38);
+      master.gain.exponentialRampToValueAtTime(0.0008, now + 1.8);
+      filter.connect(master);
+      master.connect(ctx.destination);
+
+      const partials = [
+        { mult: 1, detune: -0.7, type: 'triangle', gain: 0.45 },
+        { mult: 1, detune:  0.7, type: 'triangle', gain: 0.45 },
+        { mult: 2, detune:  0.2, type: 'sine',     gain: 0.24 },
+        { mult: 3, detune: -0.3, type: 'sine',     gain: 0.11 },
+        { mult: 4, detune:  0.4, type: 'sine',     gain: 0.05 }
+      ];
+      partials.forEach(p => {
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(165, now);
-        osc.frequency.linearRampToValueAtTime(135, now + 0.16);
-        g.gain.setValueAtTime(0.09, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.type = p.type;
+        osc.frequency.setValueAtTime(freq * p.mult, now);
+        osc.detune.setValueAtTime(p.detune, now);
+        g.gain.setValueAtTime(p.gain, now);
         osc.connect(g);
-        g.connect(ctx.destination);
+        g.connect(filter);
         osc.start(now);
-        osc.stop(now + 0.2);
+        osc.stop(now + 1.85);
+      });
+    }
+
+    function playPianoNote(freq, opts = {}) {
+      const { force = false, gainScale = 1 } = opts;
+      if (!state.sound && !force) return;
+      try {
+        const ctx = ensureAudioContext();
+        if (!ctx) return;
+
+        // 将频率反算为精确 MIDI 音高
+        const targetMidi = Math.round(69 + 12 * Math.log2(freq / 440));
+
+        // 优先查找距离最近且已解码的真实三角钢琴采样
+        let bestSample = null;
+        let bestDiff = Infinity;
+        for (const s of PIANO_SAMPLES) {
+          if (decodedSampleBuffers.has(s.midi)) {
+            const diff = Math.abs(targetMidi - s.midi);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestSample = s;
+            }
+          }
+        }
+
+        if (bestSample) {
+          const now = ctx.currentTime;
+          const src = ctx.createBufferSource();
+          src.buffer = decodedSampleBuffers.get(bestSample.midi);
+          src.playbackRate.value = Math.pow(2, (targetMidi - bestSample.midi) / 12);
+
+          const env = ctx.createGain();
+          env.gain.setValueAtTime(0.001, now);
+          env.gain.linearRampToValueAtTime(0.88 * gainScale, now + 0.005);
+          env.gain.setValueAtTime(0.88 * gainScale, now + 1.5);
+          env.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+
+          src.connect(env);
+          env.connect(ctx.destination);
+          src.start(now);
+          src.stop(now + 2.55);
+          return;
+        }
+
+        // 若采样已下载但刚解锁尚未解码，异步触发解码，本次先用仿真钢琴无缝发声
+        decodeAllFetchedSamples();
+        playSynthPianoFallback(ctx, freq, gainScale);
+      } catch (e) {}
+    }
+
+    function playErrorTone() {
+      if (!state.sound) return;
+      try {
+        const ctx = ensureAudioContext();
+        if (!ctx) return;
+        // 柔和低沉的双音木质轻敲提示（不刺耳，贴合真钢琴氛围）
+        const now = ctx.currentTime;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 480;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.linearRampToValueAtTime(0.18, now + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+        filter.connect(g);
+        g.connect(ctx.destination);
+
+        [146.83, 138.59].forEach((f) => {
+          const osc = ctx.createOscillator();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(f, now);
+          osc.connect(filter);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        });
       } catch (e) {}
     }
 
@@ -3098,24 +3238,13 @@
     });
 
     document.getElementById('btnTimerToggle').addEventListener('click', () => {
-      unlockAudioGesture();
       if (state.timerState === 'running') pauseTimer('已手动暂停计时');
       else startOrResumeTimer();
     });
-    document.getElementById('btnOverlayStart').addEventListener('click', () => {
-      unlockAudioGesture();
-      startOrResumeTimer();
-    });
+    document.getElementById('btnOverlayStart').addEventListener('click', startOrResumeTimer);
 
     document.getElementById('btnReplay').addEventListener('click', () => {
-      unlockAudioGesture();
-      const fbTxt = document.getElementById('feedbackText');
-      if (state.timerState !== 'running' || !state.current) {
-        if (fbTxt) fbTxt.textContent = '请先点击「▶ 开始计时」显示题目后再点「听音」。';
-        return;
-      }
-      // 主动点击「听音」强制发声（不受自动发声开关限制）
-      playPianoNote(dToInfo(state.current.d).freq, true);
+      if (state.timerState === 'running' && state.current) playPianoNote(dToInfo(state.current.d).freq);
     });
     document.getElementById('btnSkip').addEventListener('click', () => {
       if (state.timerState === 'running') nextQuestion();
@@ -3279,6 +3408,20 @@
       if (e.key >= '1' && e.key <= '7') { submitReadAnswer(Number(e.key) - 1); }
     });
 
+    document.getElementById('btnTestC4').addEventListener('click', async () => {
+      ensureAudioContext();
+      await decodeAllFetchedSamples();
+      playPianoNote(dToInfo(0).freq, { force: true });
+    });
+
+    document.getElementById('btnTestArp').addEventListener('click', async () => {
+      ensureAudioContext();
+      await decodeAllFetchedSamples();
+      [0, 2, 4, 7].forEach((d, idx) => {
+        setTimeout(() => playPianoNote(dToInfo(d).freq, { force: true }), idx * 170);
+      });
+    });
+
     // 启动
     initAnswerButtons();
     applySavedPrefsToUI();
@@ -3287,6 +3430,7 @@
     renderWeakChips();
     renderHistory();
     nextQuestion();
+    preloadPianoSamples();
     if (syncCfg.token) {
       syncWithGitHub({ pullOnly: true });
     } else {
