@@ -256,11 +256,84 @@
       cursor: crosshair;
     }
 
+    .staff-wrap.place-mode {
+      touch-action: none;
+      padding: 4px 0;
+    }
+
     svg#staffSvg {
       width: 100%;
       max-width: 640px;
       height: auto;
       display: block;
+    }
+
+    .staff-wrap.place-mode svg#staffSvg {
+      max-width: 520px;
+    }
+
+    /* Mode B: 防误触微调与确认控制条 */
+    .place-controls {
+      margin-top: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .place-btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-nudge {
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 13px 8px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 2px 0 var(--border);
+    }
+
+    .btn-nudge:active { transform: translateY(1px); box-shadow: none; }
+    .btn-nudge:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-confirm-place {
+      border: none;
+      background: var(--ok);
+      color: #fff;
+      border-radius: 12px;
+      padding: 13px 10px;
+      font-size: 0.96rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(38, 115, 77, 0.25);
+    }
+
+    .btn-confirm-place:disabled {
+      background: #c7c1b5;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .place-opt-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .place-opt-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
     }
 
     /* Feedback Banner */
@@ -805,7 +878,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.5.2 · 阶段一（极简谱图布局）</span>
+      <span class="badge-ver">v1.6 · 阶段一（点谱放大防误触）</span>
     </header>
 
     <!-- 1. Controls: 练习模式、难度与功能选择 -->
@@ -868,9 +941,17 @@
       <!-- Mode A / Anchors Answer Buttons -->
       <div class="answer-grid" id="answerGrid"></div>
 
-      <!-- Mode B Place Hint -->
-      <div class="place-hint" id="placeHint" style="display:none;">
-        在上方五线谱中移动鼠标（或轻触）定位线与间，点击即可放音判定
+      <!-- Mode B Place Controls (防误触微调 + 确认) -->
+      <div class="place-controls" id="placeControls">
+        <div class="place-btn-row">
+          <button class="btn-nudge" id="btnNudgeUp" disabled>▲ 上移一步</button>
+          <button class="btn-confirm-place" id="btnConfirmPlace" disabled>先在谱上点选位置</button>
+          <button class="btn-nudge" id="btnNudgeDown" disabled>▼ 下移一步</button>
+        </div>
+        <div class="place-opt-row">
+          <span id="placeHint">在放大五线谱上按住上下拖动选位，可点左右微调后再确认</span>
+          <label><input type="checkbox" id="toggleConfirmPlace" checked /> 防误触（确认前可微调）</label>
+        </div>
       </div>
 
       <div class="feedback" id="feedbackBar">
@@ -1225,9 +1306,12 @@
       showAnchors: savedPrefs.showAnchors !== undefined ? savedPrefs.showAnchors : true,
       sound: savedPrefs.sound !== undefined ? savedPrefs.sound : true,
       autoNext: savedPrefs.autoNext !== undefined ? savedPrefs.autoNext : true,
+      confirmBeforePlace: savedPrefs.confirmBeforePlace !== undefined ? savedPrefs.confirmBeforePlace : true,
 
       current: null,
       hoverD: null,
+      selectedD: null,
+      isDraggingStaff: false,
       placedResult: null,
 
       streak: Number(saved.streak) || 0,
@@ -1396,7 +1480,8 @@
             range: state.range,
             showAnchors: state.showAnchors,
             sound: state.sound,
-            autoNext: state.autoNext
+            autoNext: state.autoNext,
+            confirmBeforePlace: state.confirmBeforePlace
           }
         }));
       } catch {}
@@ -1617,23 +1702,72 @@
       g.appendChild(svgEl('circle', { cx: cx + 37, cy: fLineY + STEP_PX, r: 3.4, fill: dotColor }));
     }
 
+    function getStaffGeom() {
+      if (state.mode === 'place') {
+        const step = 14;
+        const scale = step / STEP_PX;
+        const top = 128;
+        return {
+          w: 440,
+          h: 380,
+          step,
+          top,
+          left: 22,
+          right: 418,
+          noteX: 256,
+          scale,
+          clefTx: -98,
+          clefTy: top - STAFF_TOP * scale,
+          anchorX: 112
+        };
+      }
+      return {
+        w: 600,
+        h: 250,
+        step: STEP_PX,
+        top: STAFF_TOP,
+        left: STAFF_LEFT,
+        right: STAFF_RIGHT,
+        noteX: NOTE_X,
+        scale: 1,
+        clefTx: 0,
+        clefTy: 0,
+        anchorX: 152
+      };
+    }
+
+    function dToYActive(clef, d) {
+      const g = getStaffGeom();
+      return g.top + (CLEF_META[clef].topLineD - d) * g.step;
+    }
+
+    function yToDActive(clef, y) {
+      const g = getStaffGeom();
+      const raw = CLEF_META[clef].topLineD - (y - g.top) / g.step;
+      const clamped = Math.round(raw);
+      const minD = clef === 'treble' ? -3 : -17;
+      const maxD = clef === 'treble' ? 17 : 3;
+      return Math.max(minD, Math.min(maxD, clamped));
+    }
+
     function drawLedgerLines(g, clef, d, x, color = '#1e2320', opacity = 1) {
       const meta = CLEF_META[clef];
-      const halfW = 19;
+      const geom = getStaffGeom();
+      const halfW = Math.round(19 * geom.scale);
       if (d >= meta.topLineD + 2) {
         for (let k = meta.topLineD + 2; k <= d; k += 2) {
-          const y = dToY(clef, k);
+          const y = dToYActive(clef, k);
           g.appendChild(svgEl('line', {
             x1: x - halfW, y1: y, x2: x + halfW, y2: y,
-            stroke: color, 'stroke-width': 1.7, opacity
+            stroke: color, 'stroke-width': 1.7 * Math.min(geom.scale, 1.3), opacity
           }));
         }
       } else if (d <= meta.bottomLineD - 2) {
         for (let k = meta.bottomLineD - 2; k >= d; k -= 2) {
-          const y = dToY(clef, k);
+          const y = dToYActive(clef, k);
           g.appendChild(svgEl('line', {
             x1: x - halfW, y1: y, x2: x + halfW, y2: y,
-            stroke: color, 'stroke-width': 1.7, opacity
+            stroke: color, 'stroke-width': 1.7 * Math.min(geom.scale, 1.3), opacity
           }));
         }
       }
@@ -1641,12 +1775,15 @@
 
     function drawNote(g, clef, d, x, opts = {}) {
       const { color = '#1e2320', opacity = 1, label = '', dashed = false } = opts;
-      const y = dToY(clef, d);
+      const geom = getStaffGeom();
+      const y = dToYActive(clef, d);
+      const rx = 10.5 * geom.scale;
+      const ry = 7.4 * geom.scale;
       drawLedgerLines(g, clef, d, x, color, opacity);
 
       // 椭圆形符头（倾斜 -18 度）
       g.appendChild(svgEl('ellipse', {
-        cx: x, cy: y, rx: 10.5, ry: 7.4,
+        cx: x, cy: y, rx, ry,
         transform: `rotate(-18 ${x} ${y})`,
         fill: dashed ? 'none' : color,
         stroke: color,
@@ -1657,18 +1794,19 @@
 
       // 符干方向：在第三线及以上朝下，以下朝上
       const stemDown = d >= CLEF_META[clef].midLineD;
-      const stemX = stemDown ? x - 9.4 : x + 9.4;
-      const stemY2 = stemDown ? y + 48 : y - 48;
+      const stemX = stemDown ? x - 9.4 * geom.scale : x + 9.4 * geom.scale;
+      const stemLen = 48 * Math.min(geom.scale, 1.35);
+      const stemY2 = stemDown ? y + stemLen : y - stemLen;
       g.appendChild(svgEl('line', {
         x1: stemX, y1: y, x2: stemX, y2: stemY2,
-        stroke: color, 'stroke-width': 2.1, opacity
+        stroke: color, 'stroke-width': 2.1 * Math.min(geom.scale, 1.25), opacity
       }));
 
       if (label) {
         const txt = svgEl('text', {
-          x: x + 22, y: y + 5,
+          x: x + Math.round(20 * geom.scale), y: y + 5,
           fill: color,
-          'font-size': 14,
+          'font-size': geom.scale > 1 ? 15 : 14,
           'font-weight': 700,
           opacity
         });
@@ -1680,32 +1818,36 @@
     function renderStaff() {
       if (!state.current) return;
       const { clef, d } = state.current;
+      const geom = getStaffGeom();
+      svg.setAttribute('viewBox', `0 0 ${geom.w} ${geom.h}`);
       svg.innerHTML = '';
 
       // 1. 画五条标准线
       for (let i = 0; i < 5; i++) {
-        const y = STAFF_TOP + i * STEP_PX * 2;
+        const y = geom.top + i * geom.step * 2;
         svg.appendChild(svgEl('line', {
-          x1: STAFF_LEFT, y1: y, x2: STAFF_RIGHT, y2: y,
-          stroke: '#3a3732', 'stroke-width': 1.4
+          x1: geom.left, y1: y, x2: geom.right, y2: y,
+          stroke: '#3a3732', 'stroke-width': geom.scale > 1 ? 1.8 : 1.4
         }));
       }
       // 左侧起始竖线与右侧结束双小节线
       svg.appendChild(svgEl('line', {
-        x1: STAFF_LEFT, y1: STAFF_TOP, x2: STAFF_LEFT, y2: STAFF_TOP + 8 * STEP_PX,
-        stroke: '#3a3732', 'stroke-width': 2
+        x1: geom.left, y1: geom.top, x2: geom.left, y2: geom.top + 8 * geom.step,
+        stroke: '#3a3732', 'stroke-width': 2.2
       }));
       svg.appendChild(svgEl('line', {
-        x1: STAFF_RIGHT - 6, y1: STAFF_TOP, x2: STAFF_RIGHT - 6, y2: STAFF_TOP + 8 * STEP_PX,
-        stroke: '#3a3732', 'stroke-width': 1.5
+        x1: geom.right - 6, y1: geom.top, x2: geom.right - 6, y2: geom.top + 8 * geom.step,
+        stroke: '#3a3732', 'stroke-width': 1.6
       }));
       svg.appendChild(svgEl('line', {
-        x1: STAFF_RIGHT, y1: STAFF_TOP, x2: STAFF_RIGHT, y2: STAFF_TOP + 8 * STEP_PX,
-        stroke: '#3a3732', 'stroke-width': 4
+        x1: geom.right, y1: geom.top, x2: geom.right, y2: geom.top + 8 * geom.step,
+        stroke: '#3a3732', 'stroke-width': 4.2
       }));
 
-      // 2. 画谱号
-      const clefG = svgEl('g');
+      // 2. 画谱号（在点谱放大模式下按比例精确对齐 G4 / F3 线）
+      const clefG = geom.scale === 1
+        ? svgEl('g')
+        : svgEl('g', { transform: `translate(${geom.clefTx}, ${geom.clefTy}) scale(${geom.scale})` });
       if (clef === 'treble') drawTrebleClef(clefG);
       else drawBassClef(clefG);
       svg.appendChild(clefG);
@@ -1714,20 +1856,21 @@
       if (state.showAnchors) {
         const anchorG = svgEl('g');
         for (const a of CLEF_META[clef].anchors) {
-          const ay = dToY(clef, a.d);
+          const ay = dToYActive(clef, a.d);
           const aInfo = dToInfo(a.d);
           anchorG.appendChild(svgEl('line', {
-            x1: 158, y1: ay, x2: STAFF_RIGHT - 18, y2: ay,
-            stroke: '#d97706', 'stroke-width': 1.1, 'stroke-dasharray': '4 5', opacity: 0.42
+            x1: geom.anchorX + 6, y1: ay, x2: geom.right - 14, y2: ay,
+            stroke: '#d97706', 'stroke-width': 1.2, 'stroke-dasharray': '4 5', opacity: 0.42
           }));
-          const pill = svgEl('rect', {
-            x: 152, y: ay - 8, width: 28, height: 16, rx: 4,
-            fill: '#fef3c7', stroke: '#f59e0b', 'stroke-width': 0.8
-          });
-          anchorG.appendChild(pill);
+          const pillW = geom.scale > 1 ? 34 : 28;
+          const pillH = geom.scale > 1 ? 20 : 16;
+          anchorG.appendChild(svgEl('rect', {
+            x: geom.anchorX, y: ay - pillH / 2, width: pillW, height: pillH, rx: 5,
+            fill: '#fef3c7', stroke: '#f59e0b', 'stroke-width': 0.9
+          }));
           const t = svgEl('text', {
-            x: 166, y: ay + 4, 'text-anchor': 'middle',
-            fill: '#b45309', 'font-size': 10.5, 'font-weight': 700
+            x: geom.anchorX + pillW / 2, y: ay + (geom.scale > 1 ? 4.5 : 4), 'text-anchor': 'middle',
+            fill: '#b45309', 'font-size': geom.scale > 1 ? 12 : 10.5, 'font-weight': 700
           });
           t.textContent = aInfo.name;
           anchorG.appendChild(t);
@@ -1742,24 +1885,41 @@
           ? (state.current.wasCorrect ? '#26734d' : '#c23b3b')
           : '#1e2320';
         const label = state.current.answered ? `${dToInfo(d).name} (${dToInfo(d).solfege})` : '';
-        drawNote(noteG, clef, d, NOTE_X, { color, label });
+        drawNote(noteG, clef, d, geom.noteX, { color, label });
       } else {
-        // Mode B: 看音名点五线谱
-        if (!state.current.answered && state.hoverD !== null) {
-          drawNote(noteG, clef, state.hoverD, NOTE_X, { color: '#b85d3b', opacity: 0.45 });
+        // Mode B: 看音名点五线谱（大谱面 + 水平瞄准带 + 线/间位置提示）
+        const activeD = state.selectedD !== null ? state.selectedD : state.hoverD;
+        if (!state.current.answered && activeD !== null) {
+          const ay = dToYActive(clef, activeD);
+          // 柔和水平定位高亮带，让你一眼分清是「在线上」还是「在间里」
+          noteG.appendChild(svgEl('rect', {
+            x: geom.anchorX + 38, y: ay - geom.step * 0.48,
+            width: geom.right - (geom.anchorX + 52), height: geom.step * 0.96,
+            rx: 5, fill: '#b85d3b', opacity: 0.11
+          }));
+          noteG.appendChild(svgEl('line', {
+            x1: geom.anchorX + 38, y1: ay, x2: geom.right - 14, y2: ay,
+            stroke: '#b85d3b', 'stroke-width': 1.2, 'stroke-dasharray': '3 4', opacity: 0.5
+          }));
+          const posText = getStaffPositionLabel(clef, activeD);
+          drawNote(noteG, clef, activeD, geom.noteX, {
+            color: '#b85d3b',
+            opacity: state.selectedD !== null ? 0.95 : 0.55,
+            label: posText
+          });
         }
         if (state.placedResult) {
           const { clickedD, isCorrect } = state.placedResult;
           if (isCorrect) {
-            drawNote(noteG, clef, d, NOTE_X, { color: '#26734d', label: `✓ ${dToInfo(d).name}` });
+            drawNote(noteG, clef, d, geom.noteX, { color: '#26734d', label: `✓ ${dToInfo(d).name}` });
           } else {
-            drawNote(noteG, clef, clickedD, NOTE_X - 42, {
+            drawNote(noteG, clef, clickedD, geom.noteX - 48, {
               color: '#c23b3b',
-              label: `你点了 ${dToInfo(clickedD).name}`
+              label: `点了 ${dToInfo(clickedD).name}`
             });
-            drawNote(noteG, clef, d, NOTE_X + 74, {
+            drawNote(noteG, clef, d, geom.noteX + 54, {
               color: '#26734d',
-              label: `正确: ${dToInfo(d).name}`
+              label: `正确 ${dToInfo(d).name}`
             });
           }
         }
@@ -1940,6 +2100,8 @@
         wasCorrect: false
       };
       state.hoverD = null;
+      state.selectedD = null;
+      state.isDraggingStaff = false;
       state.placedResult = null;
 
       if (isRunning) startTimerTick();
@@ -1947,16 +2109,36 @@
       renderStaff();
     }
 
+    function updatePlaceControlsUI() {
+      const btnUp = document.getElementById('btnNudgeUp');
+      const btnDown = document.getElementById('btnNudgeDown');
+      const btnConfirm = document.getElementById('btnConfirmPlace');
+      if (!btnUp || !btnDown || !btnConfirm) return;
+      const canAct = state.timerState === 'running' && state.mode === 'place' && state.current && !state.current.answered;
+      const hasSel = canAct && state.selectedD !== null;
+      btnUp.disabled = !canAct;
+      btnDown.disabled = !canAct;
+      btnConfirm.disabled = !hasSel;
+      if (hasSel) {
+        const pos = getStaffPositionLabel(state.current.clef, state.selectedD);
+        btnConfirm.textContent = `✓ 确认落音（${pos}）`;
+      } else {
+        btnConfirm.textContent = canAct ? '请在谱上点选或拖动定位' : '点击开始计时后作答';
+      }
+    }
+
     function updateUIForQuestion() {
       const { clef, d } = state.current;
       const info = dToInfo(d);
       const promptEl = document.getElementById('promptMain');
       const ansGrid = document.getElementById('answerGrid');
-      const placeHint = document.getElementById('placeHint');
+      const placeControls = document.getElementById('placeControls');
       const staffWrap = document.getElementById('staffWrap');
       const fb = document.getElementById('feedbackBar');
       const fbTxt = document.getElementById('feedbackText');
       const btnNext = document.getElementById('btnNext');
+
+      staffWrap.classList.toggle('place-mode', state.mode === 'place');
 
       if (!state.current.answered) {
         fb.className = 'feedback';
@@ -1971,34 +2153,38 @@
           ? `⏸ 计时已暂停 <span class="clef-tag">${CLEF_META[clef].name}</span>`
           : `准备就绪：点击「▶ 开始计时」显示题目 <span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = state.mode === 'place' ? 'none' : 'grid';
-        placeHint.style.display = state.mode === 'place' ? 'block' : 'none';
+        placeControls.style.display = state.mode === 'place' ? 'flex' : 'none';
         staffWrap.classList.remove('interactive');
         if (!state.current.answered) {
           fbTxt.textContent = '当前未在计时，你可以放心调整难度/模式或先休息一下。';
         }
         updateTimerUI();
+        updatePlaceControlsUI();
         return;
       }
 
       if (state.mode === 'place') {
         promptEl.innerHTML = `请在五线谱上点出：<span class="target-pill">${info.name}（${info.solfege}）</span><span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = 'none';
-        placeHint.style.display = 'block';
+        placeControls.style.display = 'flex';
         staffWrap.classList.add('interactive');
         if (!state.current.answered) {
-          fbTxt.textContent = `小提示：先在脑子里定位 ${CLEF_META[clef].name} 最近的锚点，再直接点出线或间。`;
+          fbTxt.textContent = state.confirmBeforePlace
+            ? '手指可在谱面上按住拖动选位，差半格可点 ▲/▼ 微调，对齐后点「✓ 确认落音」。'
+            : '极速点谱模式：轻触或点击五线谱线/间后立即判定。';
         }
       } else {
         const modeTitle = state.mode === 'anchors' ? '⚡ 锚点闪电战：秒出这个音！' : '请识别这个音符：';
         promptEl.innerHTML = `${modeTitle} <span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = 'grid';
-        placeHint.style.display = 'none';
+        placeControls.style.display = 'none';
         staffWrap.classList.remove('interactive');
         if (!state.current.answered) {
           fbTxt.textContent = '快捷键：键盘按 C–B 或 1–7 秒答 · 按 P 键随时暂停/继续计时。';
         }
       }
       updateTimerUI();
+      updatePlaceControlsUI();
     }
 
     function recordResult(isCorrect, detailText) {
@@ -2059,6 +2245,7 @@
       renderHistory();
       renderStaff();
       updateTimerUI();
+      updatePlaceControlsUI();
       scheduleAutoSync();
 
       const fb = document.getElementById('feedbackBar');
@@ -2176,6 +2363,8 @@
       document.getElementById('toggleAnchors').checked = state.showAnchors;
       document.getElementById('toggleSound').checked = state.sound;
       document.getElementById('toggleAutoNext').checked = state.autoNext;
+      const cp = document.getElementById('toggleConfirmPlace');
+      if (cp) cp.checked = state.confirmBeforePlace;
     }
 
     function renderWeakChips() {
@@ -2467,32 +2656,80 @@
       });
     }
 
-    // 交互式五线谱坐标换算（Mode B）
+    // 交互式五线谱坐标换算（Mode B：支持放大谱面按住上下拖动 + 微调确认）
     function clientYToSvgY(clientY) {
       const rect = svg.getBoundingClientRect();
-      return ((clientY - rect.top) / rect.height) * 250;
+      const geom = getStaffGeom();
+      return ((clientY - rect.top) / rect.height) * geom.h;
     }
+
+    function nudgeSelectedNote(delta) {
+      if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
+      const clef = state.current.clef;
+      const minD = clef === 'treble' ? -3 : -17;
+      const maxD = clef === 'treble' ? 17 : 3;
+      const base = state.selectedD !== null ? state.selectedD : CLEF_META[clef].midLineD;
+      state.selectedD = Math.max(minD, Math.min(maxD, base + delta));
+      renderStaff();
+      updatePlaceControlsUI();
+    }
+
+    svg.addEventListener('pointerdown', (e) => {
+      if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
+      e.preventDefault();
+      state.isDraggingStaff = true;
+      try { svg.setPointerCapture(e.pointerId); } catch {}
+      state.selectedD = yToDActive(state.current.clef, clientYToSvgY(e.clientY));
+      renderStaff();
+      updatePlaceControlsUI();
+    });
 
     svg.addEventListener('pointermove', (e) => {
       if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
-      const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
-      if (d !== state.hoverD) {
-        state.hoverD = d;
-        renderStaff();
+      const d = yToDActive(state.current.clef, clientYToSvgY(e.clientY));
+      if (state.isDraggingStaff) {
+        if (d !== state.selectedD) {
+          state.selectedD = d;
+          renderStaff();
+          updatePlaceControlsUI();
+        }
+      } else if (e.pointerType === 'mouse') {
+        if (d !== state.hoverD) {
+          state.hoverD = d;
+          renderStaff();
+        }
       }
     });
 
+    svg.addEventListener('pointerup', (e) => {
+      if (!state.isDraggingStaff) return;
+      state.isDraggingStaff = false;
+      try { svg.releasePointerCapture(e.pointerId); } catch {}
+      if (!state.confirmBeforePlace && state.selectedD !== null && state.current && !state.current.answered) {
+        submitPlaceAnswer(state.selectedD);
+      }
+    });
+
+    svg.addEventListener('pointercancel', () => {
+      state.isDraggingStaff = false;
+    });
+
     svg.addEventListener('pointerleave', () => {
-      if (state.hoverD !== null) {
+      if (!state.isDraggingStaff && state.hoverD !== null) {
         state.hoverD = null;
         renderStaff();
       }
     });
 
-    svg.addEventListener('click', (e) => {
-      if (state.timerState !== 'running' || state.mode !== 'place' || !state.current || state.current.answered) return;
-      const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
-      submitPlaceAnswer(d);
+    document.getElementById('btnNudgeUp').addEventListener('click', () => nudgeSelectedNote(1));
+    document.getElementById('btnNudgeDown').addEventListener('click', () => nudgeSelectedNote(-1));
+    document.getElementById('btnConfirmPlace').addEventListener('click', () => {
+      if (state.selectedD !== null) submitPlaceAnswer(state.selectedD);
+    });
+    document.getElementById('toggleConfirmPlace').addEventListener('change', (e) => {
+      state.confirmBeforePlace = e.target.checked;
+      persist();
+      updateUIForQuestion();
     });
 
     // 模式切换
@@ -2645,10 +2882,25 @@
         else startOrResumeTimer();
         return;
       }
+      if (e.key === 'ArrowUp' && state.timerState === 'running' && state.mode === 'place') {
+        e.preventDefault();
+        nudgeSelectedNote(1);
+        return;
+      }
+      if (e.key === 'ArrowDown' && state.timerState === 'running' && state.mode === 'place') {
+        e.preventDefault();
+        nudgeSelectedNote(-1);
+        return;
+      }
       if (e.key === ' ' || e.key === 'Enter') {
         if (state.timerState !== 'running') {
           e.preventDefault();
           startOrResumeTimer();
+          return;
+        }
+        if (state.mode === 'place' && state.current && !state.current.answered && state.selectedD !== null) {
+          e.preventDefault();
+          submitPlaceAnswer(state.selectedD);
           return;
         }
         if (state.current && state.current.answered) {
