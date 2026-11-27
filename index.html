@@ -805,7 +805,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.5.1 · 阶段一（练习优先布局）</span>
+      <span class="badge-ver">v1.5.2 · 阶段一（极简谱图布局）</span>
     </header>
 
     <!-- 1. Controls: 练习模式、难度与功能选择 -->
@@ -900,23 +900,9 @@
     </div>
 
     <div class="card">
-      <div class="weak-panel" style="align-items:flex-start;">
-        <div class="weak-rows">
-          <div class="weak-chips" id="weakChips">
-            <strong style="color:var(--ink);">高频错音：</strong>
-            <span class="chip empty">暂无错音，继续保持！</span>
-          </div>
-          <div class="weak-chips" id="slowChips">
-            <strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>
-            <span class="chip empty">暂无慢音，反应很快！</span>
-          </div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn-primary-sm" id="btnFocusDrill">🎯 重点训练弱项</button>
-          <button class="icon-btn" id="btnToggleAnalysis">🎼 隐藏单音谱图</button>
-          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
-          <button class="icon-btn" id="btnResetStats">重置统计</button>
-        </div>
+      <div class="weak-panel">
+        <button class="icon-btn" id="btnToggleAnalysis" style="font-weight:700;">🎼 单音熟练度 ▴</button>
+        <span style="color:var(--muted); font-size:0.78rem;">绿=熟练 · 黄=慢(&gt;2s) · 橙=又慢又错 · 红=错音</span>
       </div>
 
       <div class="analysis-drawer open" id="analysisDrawer"></div>
@@ -930,8 +916,8 @@
       </div>
     </div>
 
-    <!-- 4. Cloud Sync Card: GitHub 云同步设置 -->
-    <div class="card" style="padding:13px 16px;">
+    <!-- 4. Cloud Sync & Data Management Card: 数据管理与 GitHub 云同步 -->
+    <div class="card" style="padding:14px 16px;">
       <div class="sync-bar">
         <div class="sync-status">
           <span class="sync-dot" id="syncDot"></span>
@@ -940,6 +926,8 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="icon-btn" id="btnSyncNow" style="display:none;">☁️ 立即同步</button>
           <button class="icon-btn" id="btnToggleSyncConfig">⚙️ 云同步设置</button>
+          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
+          <button class="icon-btn" id="btnResetStats">重置统计</button>
         </div>
       </div>
 
@@ -2191,55 +2179,7 @@
     }
 
     function renderWeakChips() {
-      // 1. 高频错音
-      const wrap = document.getElementById('weakChips');
-      const entries = Object.entries(state.weakMap)
-        .filter(([, cnt]) => cnt > 0)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8);
-
-      wrap.innerHTML = '<strong style="color:var(--ink);">高频错音：</strong>';
-      if (!entries.length) {
-        const s = document.createElement('span');
-        s.className = 'chip empty';
-        s.textContent = '暂无错音，状态很稳！';
-        wrap.appendChild(s);
-      } else {
-        for (const [k, cnt] of entries) {
-          const [clef, dStr] = k.split(':');
-          const info = dToInfo(Number(dStr));
-          const chip = document.createElement('span');
-          chip.className = 'chip';
-          chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} (${cnt}次)`;
-          wrap.appendChild(chip);
-        }
-      }
-
-      // 2. 不熟练慢音（近 5 次平均 > 2.0s）
-      const slowWrap = document.getElementById('slowChips');
-      if (slowWrap) {
-        const slowEntries = Object.entries(state.slowMap)
-          .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs)
-          .slice(0, 8);
-        slowWrap.innerHTML = '<strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>';
-        if (!slowEntries.length) {
-          const s = document.createElement('span');
-          s.className = 'chip empty';
-          s.textContent = '暂无慢音，反应很快！';
-          slowWrap.appendChild(s);
-        } else {
-          for (const [k, infoStat] of slowEntries) {
-            const [clef, dStr] = k.split(':');
-            const info = dToInfo(Number(dStr));
-            const chip = document.createElement('span');
-            chip.className = 'chip slow';
-            chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} · ${(infoStat.recentAvgMs / 1000).toFixed(1)}s`;
-            slowWrap.appendChild(chip);
-          }
-        }
-      }
-
-      // 3. 单音耗时详细分析表（若已展开则同步刷新）
+      // 直接刷新五线谱单音熟练度热力图
       renderNoteAnalysisTable();
     }
 
@@ -2615,29 +2555,11 @@
       else startOrResumeTimer();
     });
 
-    document.getElementById('btnFocusDrill').addEventListener('click', () => {
-      const hasFocus = Object.keys(state.weakMap).length > 0 || Object.keys(state.slowMap).length > 0;
-      if (!hasFocus) {
-        alert('目前还没有错音或超过 2 秒的慢音，先在常用音域练几题积累数据吧！');
-        return;
-      }
-      state.range = 'weak';
-      document.getElementById('rangeSelect').value = 'weak';
-      if (state.mode === 'anchors') {
-        state.mode = 'read';
-        applySavedPrefsToUI();
-      }
-      persist();
-      if (state.timerState === 'running') nextQuestion();
-      else startOrResumeTimer();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
     document.getElementById('btnToggleAnalysis').addEventListener('click', () => {
       const drawer = document.getElementById('analysisDrawer');
       const btn = document.getElementById('btnToggleAnalysis');
       const isOpen = drawer.classList.toggle('open');
-      btn.textContent = isOpen ? '🎼 隐藏单音谱图' : '🎼 显示单音谱图';
+      btn.textContent = isOpen ? '🎼 单音熟练度 ▴' : '🎼 单音熟练度 ▾';
       if (isOpen) renderNoteAnalysisTable();
     });
 
@@ -2646,8 +2568,8 @@
       const btn = document.getElementById('btnCopyReport');
       try {
         await navigator.clipboard.writeText(text);
-        btn.textContent = '✓ 已复制，直接发给 AI 即可';
-        setTimeout(() => { btn.textContent = '📋 复制今日战报'; }, 2200);
+        btn.textContent = '✓ 已复制，直接发给 AI';
+        setTimeout(() => { btn.textContent = '📋 复制战报'; }, 2200);
       } catch {
         window.prompt('长按全选复制发给 AI：', text);
       }
