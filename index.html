@@ -519,16 +519,101 @@
     }
 
     .analysis-drawer {
-      margin-top: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
       display: none;
       flex-direction: column;
-      gap: 5px;
-      max-height: 280px;
-      overflow-y: auto;
-      padding-right: 2px;
+      gap: 10px;
     }
 
     .analysis-drawer.open { display: flex; }
+
+    .heatmap-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+    }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+      border: 1.5px solid transparent;
+    }
+
+    .heatmap-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: #fffdf9;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 6px 4px;
+    }
+
+    .heatmap-staff-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin: 2px 0 2px 8px;
+    }
+
+    .heatmap-svg {
+      width: 100%;
+      min-width: 560px;
+      height: auto;
+      display: block;
+    }
+
+    .heatmap-note-hit {
+      cursor: pointer;
+    }
+
+    .heatmap-note-hit:hover circle.note-dot {
+      filter: brightness(0.92);
+      stroke-width: 2.6;
+    }
+
+    .heatmap-detail {
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: #f7f4ee;
+      font-size: 0.84rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .note-list-box {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
 
     .note-row {
       display: grid;
@@ -558,9 +643,10 @@
       text-align: center;
     }
 
-    .tag-mini.ok { background: var(--ok-soft); color: var(--ok); }
-    .tag-mini.slow { background: var(--anchor-soft); color: #b45309; }
-    .tag-mini.err { background: var(--err-soft); color: var(--err); }
+    .tag-mini.ok { background: #dcfce7; color: #166534; }
+    .tag-mini.slow { background: #fef9c3; color: #a16207; }
+    .tag-mini.both { background: #ffedd5; color: #c2410c; }
+    .tag-mini.err { background: #fee2e2; color: #b91c1c; }
 
     .history-section {
       margin-top: 14px;
@@ -719,7 +805,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.4 · 阶段一（单音耗时分析 + 重点训练）</span>
+      <span class="badge-ver">v1.5 · 阶段一（五线谱熟练度热力图）</span>
     </header>
 
     <!-- Cloud Sync Card -->
@@ -874,13 +960,13 @@
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn-primary-sm" id="btnFocusDrill">🎯 重点训练弱项</button>
-          <button class="icon-btn" id="btnToggleAnalysis">📊 单音耗时表</button>
+          <button class="icon-btn" id="btnToggleAnalysis">🎼 隐藏单音谱图</button>
           <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
           <button class="icon-btn" id="btnResetStats">重置统计</button>
         </div>
       </div>
 
-      <div class="analysis-drawer" id="analysisDrawer"></div>
+      <div class="analysis-drawer open" id="analysisDrawer"></div>
 
       <div class="history-section">
         <div class="history-header">
@@ -1173,7 +1259,8 @@
       unsyncedAnswers: 0,
       syncing: false,
       timerState: 'idle', // 'idle' | 'running' | 'paused'
-      pauseReason: ''
+      pauseReason: '',
+      analysisView: 'staff' // 'staff' | 'list'
     };
 
     let autoNextTimer = null;
@@ -2157,14 +2244,248 @@
       renderNoteAnalysisTable();
     }
 
+    function getNoteStatusStyle(key) {
+      const st = state.noteStats[key];
+      const errCnt = state.weakMap[key] || 0;
+      const hasErr = errCnt > 0;
+      if (!st && !hasErr) {
+        return {
+          code: 'none',
+          label: '尚未练到',
+          fill: '#ffffff',
+          stroke: '#c7c1b5',
+          text: '#a39e93',
+          dashed: true
+        };
+      }
+      const isSlow = st ? st.isSlow : false;
+      if (hasErr && isSlow) {
+        return {
+          code: 'both',
+          label: '又慢又易错',
+          fill: '#f97316',
+          stroke: '#c2410c',
+          text: '#c2410c',
+          dashed: false
+        };
+      }
+      if (hasErr) {
+        return {
+          code: 'err',
+          label: '易错音',
+          fill: '#ef4444',
+          stroke: '#b91c1c',
+          text: '#b91c1c',
+          dashed: false
+        };
+      }
+      if (isSlow) {
+        return {
+          code: 'slow',
+          label: '慢音 (>2s)',
+          fill: '#facc15',
+          stroke: '#a16207',
+          text: '#a16207',
+          dashed: false
+        };
+      }
+      return {
+        code: 'ok',
+        label: '完全熟练 (≤2s)',
+        fill: '#22a055',
+        stroke: '#166534',
+        text: '#166534',
+        dashed: false
+      };
+    }
+
+    function buildHeatmapStaffSvg(clef) {
+      // 收集该谱号核心音域 + 已练到的任何扩展音，按音高从低到高排布
+      const baseRange = CLEF_META[clef].ranges.core;
+      const dSet = new Set(baseRange);
+      for (const k of [...Object.keys(state.noteStats), ...Object.keys(state.weakMap)]) {
+        const [c, ds] = k.split(':');
+        if (c === clef) dSet.add(Number(ds));
+      }
+      const dList = Array.from(dSet).sort((a, b) => a - b);
+
+      const STEP_M = 7.5;
+      const TOP_M = 66;
+      const W = Math.max(660, 110 + dList.length * 36);
+      const H = 214;
+      const scale = STEP_M / STEP_PX; // 5/6 = 0.833333
+      const meta = CLEF_META[clef];
+      const yM = (d) => TOP_M + (meta.topLineD - d) * STEP_M;
+
+      const s = svgEl('svg', {
+        class: 'heatmap-svg',
+        viewBox: `0 0 ${W} ${H}`,
+        xmlns: 'http://www.w3.org/2000/svg'
+      });
+
+      // 五条线
+      for (let i = 0; i < 5; i++) {
+        const y = TOP_M + i * STEP_M * 2;
+        s.appendChild(svgEl('line', {
+          x1: 20, y1: y, x2: W - 16, y2: y,
+          stroke: '#4a463f', 'stroke-width': 1.15
+        }));
+      }
+      // 起始竖线与终止双线
+      s.appendChild(svgEl('line', { x1: 20, y1: TOP_M, x2: 20, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 1.8 }));
+      s.appendChild(svgEl('line', { x1: W - 21, y1: TOP_M, x2: W - 21, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 1.2 }));
+      s.appendChild(svgEl('line', { x1: W - 16, y1: TOP_M, x2: W - 16, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 3.2 }));
+
+      // 精确缩放谱号（84 * 5/6 = 70 -> ty = 66 - 70 = -4，精确对齐 G4 / F3 线）
+      const clefG = svgEl('g', { transform: `translate(-42, -4) scale(${scale})` });
+      if (clef === 'treble') drawTrebleClef(clefG);
+      else drawBassClef(clefG);
+      s.appendChild(clefG);
+
+      // 等距排列圆形音符
+      const startX = 96;
+      const endX = W - 36;
+      const dx = dList.length > 1 ? (endX - startX) / (dList.length - 1) : 0;
+
+      dList.forEach((d, idx) => {
+        const x = startX + idx * dx;
+        const y = yM(d);
+        const key = `${clef}:${d}`;
+        const info = dToInfo(d);
+        const st = state.noteStats[key];
+        const sty = getNoteStatusStyle(key);
+
+        const g = svgEl('g', { class: 'heatmap-note-hit' });
+
+        // 极淡竖向参考引导线（方便上下对应音名和耗时）
+        g.appendChild(svgEl('line', {
+          x1: x, y1: y + 10, x2: x, y2: 180,
+          stroke: '#e5dfd3', 'stroke-width': 0.8, 'stroke-dasharray': '2 3'
+        }));
+
+        // 上下加线（按奇偶精确画在偶数线上）
+        const halfW = 13;
+        if (d >= meta.topLineD + 2) {
+          for (let k = meta.topLineD + 2; k <= d; k += 2) {
+            const ly = yM(k);
+            g.appendChild(svgEl('line', { x1: x - halfW, y1: ly, x2: x + halfW, y2: ly, stroke: '#4a463f', 'stroke-width': 1.25 }));
+          }
+        } else if (d <= meta.bottomLineD - 2) {
+          for (let k = meta.bottomLineD - 2; k >= d; k -= 2) {
+            const ly = yM(k);
+            g.appendChild(svgEl('line', { x1: x - halfW, y1: ly, x2: x + halfW, y2: ly, stroke: '#4a463f', 'stroke-width': 1.25 }));
+          }
+        }
+
+        // 圆形音符主体
+        const circle = svgEl('circle', {
+          class: 'note-dot',
+          cx: x, cy: y, r: 7.8,
+          fill: sty.fill,
+          stroke: sty.stroke,
+          'stroke-width': sty.dashed ? 1.4 : 1.8,
+          'stroke-dasharray': sty.dashed ? '2.5 2' : 'none'
+        });
+        g.appendChild(circle);
+
+        // 底部对齐音名与近期耗时
+        const nameTxt = svgEl('text', {
+          x, y: 192, 'text-anchor': 'middle',
+          fill: sty.code === 'none' ? '#9c968b' : '#1e2320',
+          'font-size': 10.5, 'font-weight': 700
+        });
+        nameTxt.textContent = info.name;
+        g.appendChild(nameTxt);
+
+        const timeTxt = svgEl('text', {
+          x, y: 206, 'text-anchor': 'middle',
+          fill: sty.text,
+          'font-size': 9.8, 'font-weight': 700
+        });
+        timeTxt.textContent = st ? `${(st.recentAvgMs / 1000).toFixed(1)}s` : '·';
+        g.appendChild(timeTxt);
+
+        // 点击音符：发声 + 显示精确单音详情
+        g.addEventListener('click', () => {
+          playPianoNote(info.freq);
+          const detailEl = document.getElementById('heatmapDetail');
+          if (!detailEl) return;
+          const pos = getStaffPositionLabel(clef, d);
+          const errCnt = state.weakMap[key] || 0;
+          if (!st && !errCnt) {
+            detailEl.innerHTML = `<span><strong>${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 尚未练到</span><span class="tag-mini" style="background:#f1ede4;color:var(--muted);">未练</span>`;
+          } else {
+            const sec = st ? (st.recentAvgMs / 1000).toFixed(2) + 's' : '--';
+            const cnt = st ? st.count : errCnt;
+            const acc = st ? st.acc + '%' : '--';
+            const cls = sty.code === 'both' ? 'both' : (sty.code === 'err' ? 'err' : (sty.code === 'slow' ? 'slow' : 'ok'));
+            detailEl.innerHTML = `<span><strong>${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 练过 ${cnt} 次 · 正确率 ${acc} · 近期均时 <strong>${sec}</strong>${errCnt ? ` · 待消错次 ${errCnt}` : ''}</span><span class="tag-mini ${cls}">${sty.label}</span>`;
+          }
+        });
+
+        s.appendChild(g);
+      });
+
+      return s;
+    }
+
     function renderNoteAnalysisTable() {
       const drawer = document.getElementById('analysisDrawer');
       if (!drawer) return;
+      drawer.innerHTML = '';
+
+      // 顶栏：图例 + 谱图/列表视图切换
+      const topbar = document.createElement('div');
+      topbar.className = 'heatmap-topbar';
+      topbar.innerHTML = `
+        <div class="legend-row">
+          <span class="legend-item"><span class="legend-dot" style="background:#22a055;border-color:#166534;"></span>熟练 (≤2s)</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#facc15;border-color:#a16207;"></span>慢音 (&gt;2s)</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#f97316;border-color:#c2410c;"></span>又慢又错</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#ef4444;border-color:#b91c1c;"></span>错音</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#fff;border-color:#c7c1b5;border-style:dashed;"></span>未练</span>
+        </div>
+        <button class="icon-btn" id="btnSwitchAnalysisView" style="padding:4px 9px;font-size:0.78rem;">
+          ${state.analysisView === 'staff' ? '切到数字列表' : '切回五线谱图'}
+        </button>
+      `;
+      drawer.appendChild(topbar);
+
+      topbar.querySelector('#btnSwitchAnalysisView').addEventListener('click', () => {
+        state.analysisView = state.analysisView === 'staff' ? 'list' : 'staff';
+        renderNoteAnalysisTable();
+      });
+
+      if (state.analysisView === 'staff') {
+        const clefsToShow = state.clefFilter === 'both' ? ['treble', 'bass'] : [state.clefFilter];
+        for (const c of clefsToShow) {
+          const box = document.createElement('div');
+          box.className = 'heatmap-scroll';
+          const title = document.createElement('div');
+          title.className = 'heatmap-staff-title';
+          title.textContent = `${CLEF_META[c].name}单音熟练度（点任意圆点听音看详情）`;
+          box.appendChild(title);
+          box.appendChild(buildHeatmapStaffSvg(c));
+          drawer.appendChild(box);
+        }
+
+        const detail = document.createElement('div');
+        detail.className = 'heatmap-detail';
+        detail.id = 'heatmapDetail';
+        detail.innerHTML = '<span>轻点上方任意圆形音符，可试听钢琴音高并查看该音的详细次数、正确率与近期均时。</span>';
+        drawer.appendChild(detail);
+        return;
+      }
+
+      // 数字列表视图（按近期均时从慢到快排序）
       const all = Object.entries(state.noteStats)
         .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs);
+      const listBox = document.createElement('div');
+      listBox.className = 'note-list-box';
 
       if (!all.length) {
-        drawer.innerHTML = '<div style="color:var(--muted); font-size:0.82rem; padding:6px 2px;">完成几道题后，这里会按反应速度从慢到快列出每一个音的详细数据。</div>';
+        listBox.innerHTML = '<div style="color:var(--muted); font-size:0.82rem; padding:6px 2px;">完成几道题后，这里会按反应速度从慢到快列出每一个音的详细数据。</div>';
+        drawer.appendChild(listBox);
         return;
       }
 
@@ -2172,22 +2493,20 @@
       for (const [k, st] of all) {
         const [clef, dStr] = k.split(':');
         const info = dToInfo(Number(dStr));
-        const hasErr = (state.weakMap[k] || 0) > 0;
+        const sty = getNoteStatusStyle(k);
         const sec = (st.recentAvgMs / 1000).toFixed(2) + 's';
-        let badge = '<span class="tag-mini ok">✓ 熟练</span>';
-        if (hasErr && st.isSlow) badge = '<span class="tag-mini err">错+慢</span>';
-        else if (hasErr) badge = '<span class="tag-mini err">易错</span>';
-        else if (st.isSlow) badge = '<span class="tag-mini slow">慢 &gt;2s</span>';
+        const cls = sty.code === 'both' ? 'both' : (sty.code === 'err' ? 'err' : (sty.code === 'slow' ? 'slow' : 'ok'));
 
         html += `<div class="note-row">
           <span><strong>${clef === 'treble' ? '高音' : '低音'} ${info.name}</strong> (${info.solfege})</span>
           <span>${st.count}</span>
           <span>${st.acc}%</span>
           <span>${sec}</span>
-          <span>${badge}</span>
+          <span><span class="tag-mini ${cls}">${sty.label}</span></span>
         </div>`;
       }
-      drawer.innerHTML = html;
+      listBox.innerHTML = html;
+      drawer.appendChild(listBox);
     }
 
     /* ============================================================
@@ -2255,6 +2574,7 @@
         btn.classList.add('active');
         state.clefFilter = btn.dataset.clef;
         persist();
+        renderNoteAnalysisTable();
         nextQuestion();
       });
     });
@@ -2316,8 +2636,10 @@
 
     document.getElementById('btnToggleAnalysis').addEventListener('click', () => {
       const drawer = document.getElementById('analysisDrawer');
-      drawer.classList.toggle('open');
-      if (drawer.classList.contains('open')) renderNoteAnalysisTable();
+      const btn = document.getElementById('btnToggleAnalysis');
+      const isOpen = drawer.classList.toggle('open');
+      btn.textContent = isOpen ? '🎼 隐藏单音谱图' : '🎼 显示单音谱图';
+      if (isOpen) renderNoteAnalysisTable();
     });
 
     document.getElementById('btnCopyReport').addEventListener('click', async () => {
