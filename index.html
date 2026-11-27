@@ -1013,7 +1013,7 @@
   <div class="app">
     <header>
       <h1>五线谱识谱训练器</h1>
-      <span class="badge-ver">v1.8.2 · 单屏零滚屏</span>
+      <span class="badge-ver">v1.8.3 · 单屏零滚屏</span>
     </header>
 
     <!-- ==================== TAB 1: 训练模块 ==================== -->
@@ -1346,21 +1346,71 @@
     }
 
     /* ============================================================
-       2. Web Audio 柔和钢琴音色合成器（零外部音频依赖）
+       2. Web Audio 柔和钢琴音色合成器（iOS Safari/PWA 唤醒与静音键加固）
     ============================================================ */
     let audioCtx = null;
-    function playPianoNote(freq) {
-      if (!state.sound) return;
+
+    function setPlaybackAudioSession() {
       try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        const now = audioCtx.currentTime;
-        const master = audioCtx.createGain();
+        if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+          navigator.audioSession.type = 'playback';
+        }
+      } catch (e) {}
+    }
+
+    async function ensureAudioCtx() {
+      setPlaybackAudioSession();
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      if (!audioCtx || audioCtx.state === 'closed' || audioCtx.state === 'interrupted') {
+        try { if (audioCtx && audioCtx.state !== 'closed') audioCtx.close(); } catch (e) {}
+        audioCtx = new Ctx();
+      }
+      if (audioCtx.state !== 'running') {
+        try {
+          await audioCtx.resume();
+        } catch (e) {
+          try {
+            audioCtx = new Ctx();
+            await audioCtx.resume();
+          } catch (e2) {
+            return null;
+          }
+        }
+      }
+      return audioCtx;
+    }
+
+    function unlockAudioGesture() {
+      setPlaybackAudioSession();
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        if (!audioCtx || audioCtx.state === 'closed' || audioCtx.state === 'interrupted') {
+          audioCtx = new Ctx();
+        }
+        if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+        // 播放 1 采样静音帧，彻底解锁 iOS Safari / PWA 音频上下文
+        const buf = audioCtx.createBuffer(1, 1, 22050);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+      } catch (e) {}
+    }
+
+    async function playPianoNote(freq, force = false) {
+      if (!state.sound && !force) return;
+      try {
+        const ctx = await ensureAudioCtx();
+        if (!ctx) return;
+        const now = ctx.currentTime + 0.005;
+        const master = ctx.createGain();
         master.gain.setValueAtTime(0.001, now);
-        master.gain.linearRampToValueAtTime(0.28, now + 0.015);
-        master.gain.exponentialRampToValueAtTime(0.08, now + 0.35);
+        master.gain.linearRampToValueAtTime(0.32, now + 0.015);
+        master.gain.exponentialRampToValueAtTime(0.09, now + 0.35);
         master.gain.exponentialRampToValueAtTime(0.0008, now + 1.15);
-        master.connect(audioCtx.destination);
+        master.connect(ctx.destination);
 
         // 叠合基频与轻微泛音，模拟温暖电钢音色
         [
@@ -1368,8 +1418,8 @@
           { mult: 2, type: 'sine',     gain: 0.22 },
           { mult: 3, type: 'sine',     gain: 0.07 }
         ].forEach(h => {
-          const osc = audioCtx.createOscillator();
-          const g = audioCtx.createGain();
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
           osc.type = h.type;
           osc.frequency.setValueAtTime(freq * h.mult, now);
           g.gain.setValueAtTime(h.gain, now);
@@ -1381,21 +1431,21 @@
       } catch (e) {}
     }
 
-    function playErrorTone() {
+    async function playErrorTone() {
       if (!state.sound) return;
       try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
+        const ctx = await ensureAudioCtx();
+        if (!ctx) return;
+        const now = ctx.currentTime + 0.005;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(165, now);
         osc.frequency.linearRampToValueAtTime(135, now + 0.16);
-        g.gain.setValueAtTime(0.08, now);
+        g.gain.setValueAtTime(0.09, now);
         g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
         osc.connect(g);
-        g.connect(audioCtx.destination);
+        g.connect(ctx.destination);
         osc.start(now);
         osc.stop(now + 0.2);
       } catch (e) {}
@@ -3048,13 +3098,24 @@
     });
 
     document.getElementById('btnTimerToggle').addEventListener('click', () => {
+      unlockAudioGesture();
       if (state.timerState === 'running') pauseTimer('已手动暂停计时');
       else startOrResumeTimer();
     });
-    document.getElementById('btnOverlayStart').addEventListener('click', startOrResumeTimer);
+    document.getElementById('btnOverlayStart').addEventListener('click', () => {
+      unlockAudioGesture();
+      startOrResumeTimer();
+    });
 
     document.getElementById('btnReplay').addEventListener('click', () => {
-      if (state.timerState === 'running' && state.current) playPianoNote(dToInfo(state.current.d).freq);
+      unlockAudioGesture();
+      const fbTxt = document.getElementById('feedbackText');
+      if (state.timerState !== 'running' || !state.current) {
+        if (fbTxt) fbTxt.textContent = '请先点击「▶ 开始计时」显示题目后再点「听音」。';
+        return;
+      }
+      // 主动点击「听音」强制发声（不受自动发声开关限制）
+      playPianoNote(dToInfo(state.current.d).freq, true);
     });
     document.getElementById('btnSkip').addEventListener('click', () => {
       if (state.timerState === 'running') nextQuestion();
