@@ -237,6 +237,12 @@
 
     .icon-btn:hover { background: #f0ebe0; }
 
+    .icon-btn.active-tab {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
     /* Staff Canvas */
     .staff-wrap {
       position: relative;
@@ -878,16 +884,16 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.6 · 阶段一（点谱放大防误触）</span>
+      <span class="badge-ver">v1.7 · 阶段一（双模式独立熟练度）</span>
     </header>
 
     <!-- 1. Controls: 练习模式、难度与功能选择 -->
     <div class="card">
       <div class="controls">
         <div class="seg-group" id="modeGroup">
-          <button class="seg-btn active" data-mode="read">看谱 → 选音名</button>
-          <button class="seg-btn" data-mode="place">看音名 → 点五线谱</button>
-          <button class="seg-btn" data-mode="anchors">7 锚点闪电战</button>
+          <button class="seg-btn active" data-mode="read">看谱认音</button>
+          <button class="seg-btn" data-mode="place">看音点谱</button>
+          <button class="seg-btn" data-mode="anchors">锚点特训</button>
         </div>
 
         <div class="seg-group" id="clefGroup">
@@ -904,7 +910,7 @@
             <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
             <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
             <option value="extended">加线扩展音域（A1–E6）</option>
-            <option value="weak">🎯 重点训练（错音 + 慢音 &gt;2s）</option>
+            <option value="weak">🎯 重点训练（错音 + 慢音）</option>
           </select>
         </label>
 
@@ -982,8 +988,11 @@
 
     <div class="card">
       <div class="weak-panel">
-        <button class="icon-btn" id="btnToggleAnalysis" style="font-weight:700;">🎼 单音熟练度 ▴</button>
-        <span style="color:var(--muted); font-size:0.78rem;">绿=熟练 · 黄=慢(&gt;2s) · 橙=又慢又错 · 红=错音</span>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="icon-btn active-tab" id="btnToggleReadMap" style="font-weight:700;">🎼 看谱认音熟练度 ▴</button>
+          <button class="icon-btn" id="btnTogglePlaceMap" style="font-weight:700;">🎯 看音点谱熟练度 ▾</button>
+        </div>
+        <span style="color:var(--muted); font-size:0.78rem;" id="proficiencyStdLbl">认音 ≤2s · 点谱 ≤5s</span>
       </div>
 
       <div class="analysis-drawer open" id="analysisDrawer"></div>
@@ -1277,14 +1286,48 @@
       return `${y}-${m}-${day}`;
     }
 
-    function emptyDeviceBucket(name) {
-      return { name: name || syncCfg.deviceName, bestStreak: 0, daily: {}, weak: {}, notes: {} };
+    const STAT_MODES = ['read', 'place'];
+    const MODE_THRESHOLD_MS = { read: 2000, place: 5000 }; // 看谱认音 2.0s，看音点谱 5.0s
+    const MODE_LABEL = { read: '看谱认音', place: '看音点谱' };
+
+    function getStatMode(mode = state.mode) {
+      return mode === 'place' ? 'place' : 'read';
     }
 
-    const SLOW_THRESHOLD_MS = 2000; // 超过 2.0 秒判定为不熟练慢音
+    function emptyDeviceBucket(name) {
+      return {
+        name: name || syncCfg.deviceName,
+        bestStreak: 0,
+        daily: {},
+        weakByMode: { read: {}, place: {} },
+        notesByMode: { read: {}, place: {} }
+      };
+    }
 
-    // 兼容迁移 v1.1 旧数据到当前设备账本
-    const initialDevices = saved.devices ? JSON.parse(JSON.stringify(saved.devices)) : {};
+    function normalizeDeviceBucket(raw, fallbackName) {
+      const b = emptyDeviceBucket((raw && raw.name) || fallbackName);
+      if (!raw) return b;
+      b.bestStreak = Number(raw.bestStreak) || 0;
+      b.daily = raw.daily ? JSON.parse(JSON.stringify(raw.daily)) : {};
+      // 向下兼容旧版单桶 weak / notes，自动归入 read（看谱认音）
+      const rawWeakRead = (raw.weakByMode && raw.weakByMode.read) || raw.weak || {};
+      const rawWeakPlace = (raw.weakByMode && raw.weakByMode.place) || {};
+      const rawNotesRead = (raw.notesByMode && raw.notesByMode.read) || raw.notes || {};
+      const rawNotesPlace = (raw.notesByMode && raw.notesByMode.place) || {};
+      b.weakByMode.read = JSON.parse(JSON.stringify(rawWeakRead));
+      b.weakByMode.place = JSON.parse(JSON.stringify(rawWeakPlace));
+      b.notesByMode.read = JSON.parse(JSON.stringify(rawNotesRead));
+      b.notesByMode.place = JSON.parse(JSON.stringify(rawNotesPlace));
+      return b;
+    }
+
+    // 兼容迁移旧版数据到双模式设备账本
+    const initialDevices = {};
+    if (saved.devices) {
+      for (const [id, rawDev] of Object.entries(saved.devices)) {
+        initialDevices[id] = normalizeDeviceBucket(rawDev, id === syncCfg.deviceId ? syncCfg.deviceName : id);
+      }
+    }
     if (!initialDevices[syncCfg.deviceId]) {
       const bucket = emptyDeviceBucket(syncCfg.deviceName);
       if (saved.daily && Object.keys(saved.daily).length) {
@@ -1293,7 +1336,7 @@
       if (saved.bestStreak) bucket.bestStreak = Number(saved.bestStreak) || 0;
       if (saved.weakMap && Object.keys(saved.weakMap).length) {
         for (const [k, cnt] of Object.entries(saved.weakMap)) {
-          if (cnt > 0) bucket.weak[k] = { miss: cnt, hit: 0 };
+          if (cnt > 0) bucket.weakByMode.read[k] = { miss: cnt, hit: 0 };
         }
       }
       initialDevices[syncCfg.deviceId] = bucket;
@@ -1317,21 +1360,22 @@
       streak: Number(saved.streak) || 0,
       devices: initialDevices,
 
-      // 以下字段由 devices 自动聚合计算
+      // 以下字段由 devices 自动聚合计算（按 read / place 独立统计）
       bestStreak: 0,
       total: 0,
       correctCount: 0,
       totalTimeMs: 0,
       daily: {},
-      weakMap: {},
-      noteStats: {}, // key -> { count, correct, timeMs, avgMs, recentAvgMs, isSlow }
-      slowMap: {},   // key -> { recentAvgMs, avgMs, count, acc }
+      weakByMode: { read: {}, place: {} },
+      noteStatsByMode: { read: {}, place: {} },
+      slowByMode: { read: {}, place: {} },
 
       unsyncedAnswers: 0,
       syncing: false,
       timerState: 'idle', // 'idle' | 'running' | 'paused'
       pauseReason: '',
-      analysisView: 'staff' // 'staff' | 'list'
+      analysisView: 'staff', // 'staff' | 'list'
+      activeAnalysisMode: 'read' // 'read' | 'place' | null
     };
 
     let autoNextTimer = null;
@@ -1341,8 +1385,8 @@
     function recomputeAggregates() {
       let total = 0, correctCount = 0, totalTimeMs = 0, bestStreak = 0;
       const daily = {};
-      const weakRaw = {};
-      const notesRaw = {};
+      const weakRawByMode = { read: {}, place: {} };
+      const notesRawByMode = { read: {}, place: {} };
 
       for (const dev of Object.values(state.devices)) {
         if (!dev) continue;
@@ -1359,48 +1403,52 @@
           correctCount += c;
           totalTimeMs += ms;
         }
-        for (const [k, w] of Object.entries(dev.weak || {})) {
-          if (!weakRaw[k]) weakRaw[k] = { miss: 0, hit: 0 };
-          weakRaw[k].miss += Number(w.miss) || 0;
-          weakRaw[k].hit += Number(w.hit) || 0;
-        }
-        for (const [k, n] of Object.entries(dev.notes || {})) {
-          if (!notesRaw[k]) notesRaw[k] = { count: 0, correct: 0, timeMs: 0, recent: [] };
-          notesRaw[k].count += Number(n.count) || 0;
-          notesRaw[k].correct += Number(n.correct) || 0;
-          notesRaw[k].timeMs += Number(n.timeMs) || 0;
-          if (Array.isArray(n.recent)) {
-            notesRaw[k].recent.push(...n.recent);
+        for (const m of STAT_MODES) {
+          const wSrc = (dev.weakByMode && dev.weakByMode[m]) || (m === 'read' ? (dev.weak || {}) : {});
+          for (const [k, w] of Object.entries(wSrc)) {
+            if (!weakRawByMode[m][k]) weakRawByMode[m][k] = { miss: 0, hit: 0 };
+            weakRawByMode[m][k].miss += Number(w.miss) || 0;
+            weakRawByMode[m][k].hit += Number(w.hit) || 0;
+          }
+          const nSrc = (dev.notesByMode && dev.notesByMode[m]) || (m === 'read' ? (dev.notes || {}) : {});
+          for (const [k, n] of Object.entries(nSrc)) {
+            if (!notesRawByMode[m][k]) notesRawByMode[m][k] = { count: 0, correct: 0, timeMs: 0, recent: [] };
+            notesRawByMode[m][k].count += Number(n.count) || 0;
+            notesRawByMode[m][k].correct += Number(n.correct) || 0;
+            notesRawByMode[m][k].timeMs += Number(n.timeMs) || 0;
+            if (Array.isArray(n.recent)) notesRawByMode[m][k].recent.push(...n.recent);
           }
         }
       }
 
-      const weakMap = {};
-      for (const [k, w] of Object.entries(weakRaw)) {
-        const net = w.miss - w.hit;
-        if (net > 0) weakMap[k] = net;
-      }
+      const weakByMode = { read: {}, place: {} };
+      const noteStatsByMode = { read: {}, place: {} };
+      const slowByMode = { read: {}, place: {} };
 
-      const noteStats = {};
-      const slowMap = {};
-      for (const [k, n] of Object.entries(notesRaw)) {
-        if (n.count <= 0) continue;
-        const avgMs = n.timeMs / n.count;
-        // 合并多设备近期作答记录，按时间取最新 5 次计算近期均时
-        const dedup = new Map();
-        for (const item of n.recent) {
-          if (item && typeof item.ms === 'number') dedup.set(item.t, item);
+      for (const m of STAT_MODES) {
+        const threshold = MODE_THRESHOLD_MS[m];
+        for (const [k, w] of Object.entries(weakRawByMode[m])) {
+          const net = w.miss - w.hit;
+          if (net > 0) weakByMode[m][k] = net;
         }
-        const recentSlice = Array.from(dedup.values()).sort((a, b) => a.t - b.t).slice(-5);
-        const recentAvgMs = recentSlice.length
-          ? recentSlice.reduce((s, r) => s + r.ms, 0) / recentSlice.length
-          : avgMs;
-        const acc = Math.round((n.correct / n.count) * 100);
-        const isSlow = recentAvgMs > SLOW_THRESHOLD_MS;
+        for (const [k, n] of Object.entries(notesRawByMode[m])) {
+          if (n.count <= 0) continue;
+          const avgMs = n.timeMs / n.count;
+          const dedup = new Map();
+          for (const item of n.recent) {
+            if (item && typeof item.ms === 'number') dedup.set(item.t, item);
+          }
+          const recentSlice = Array.from(dedup.values()).sort((a, b) => a.t - b.t).slice(-5);
+          const recentAvgMs = recentSlice.length
+            ? recentSlice.reduce((s, r) => s + r.ms, 0) / recentSlice.length
+            : avgMs;
+          const acc = Math.round((n.correct / n.count) * 100);
+          const isSlow = recentAvgMs > threshold;
 
-        noteStats[k] = { count: n.count, correct: n.correct, acc, timeMs: n.timeMs, avgMs, recentAvgMs, isSlow };
-        if (isSlow) {
-          slowMap[k] = { recentAvgMs, avgMs, count: n.count, acc };
+          noteStatsByMode[m][k] = { count: n.count, correct: n.correct, acc, timeMs: n.timeMs, avgMs, recentAvgMs, isSlow };
+          if (isSlow) {
+            slowByMode[m][k] = { recentAvgMs, avgMs, count: n.count, acc };
+          }
         }
       }
 
@@ -1409,58 +1457,57 @@
       state.totalTimeMs = totalTimeMs;
       state.bestStreak = Math.max(bestStreak, state.streak);
       state.daily = daily;
-      state.weakMap = weakMap;
-      state.noteStats = noteStats;
-      state.slowMap = slowMap;
+      state.weakByMode = weakByMode;
+      state.noteStatsByMode = noteStatsByMode;
+      state.slowByMode = slowByMode;
     }
 
     function mergeDeviceBuckets(localDevs, remoteDevs) {
       const merged = {};
       const allIds = new Set([...Object.keys(localDevs || {}), ...Object.keys(remoteDevs || {})]);
       for (const id of allIds) {
-        const a = localDevs[id] || emptyDeviceBucket();
-        const b = remoteDevs[id] || emptyDeviceBucket();
-        const out = {
-          name: (id === syncCfg.deviceId ? syncCfg.deviceName : (b.name || a.name || id)),
-          bestStreak: Math.max(Number(a.bestStreak) || 0, Number(b.bestStreak) || 0),
-          daily: {},
-          weak: {},
-          notes: {}
-        };
-        const dates = new Set([...Object.keys(a.daily || {}), ...Object.keys(b.daily || {})]);
+        const a = normalizeDeviceBucket(localDevs && localDevs[id], id);
+        const b = normalizeDeviceBucket(remoteDevs && remoteDevs[id], id);
+        const out = emptyDeviceBucket(id === syncCfg.deviceId ? syncCfg.deviceName : (b.name || a.name || id));
+        out.bestStreak = Math.max(a.bestStreak, b.bestStreak);
+
+        const dates = new Set([...Object.keys(a.daily), ...Object.keys(b.daily)]);
         for (const dt of dates) {
-          const da = (a.daily && a.daily[dt]) || { total: 0, correct: 0, timeMs: 0 };
-          const db = (b.daily && b.daily[dt]) || { total: 0, correct: 0, timeMs: 0 };
+          const da = a.daily[dt] || { total: 0, correct: 0, timeMs: 0 };
+          const db = b.daily[dt] || { total: 0, correct: 0, timeMs: 0 };
           out.daily[dt] = {
             total: Math.max(Number(da.total) || 0, Number(db.total) || 0),
             correct: Math.max(Number(da.correct) || 0, Number(db.correct) || 0),
             timeMs: Math.max(Number(da.timeMs) || 0, Number(db.timeMs) || 0)
           };
         }
-        const keys = new Set([...Object.keys(a.weak || {}), ...Object.keys(b.weak || {})]);
-        for (const k of keys) {
-          const wa = (a.weak && a.weak[k]) || { miss: 0, hit: 0 };
-          const wb = (b.weak && b.weak[k]) || { miss: 0, hit: 0 };
-          out.weak[k] = {
-            miss: Math.max(Number(wa.miss) || 0, Number(wb.miss) || 0),
-            hit: Math.max(Number(wa.hit) || 0, Number(wb.hit) || 0)
-          };
-        }
-        const noteKeys = new Set([...Object.keys(a.notes || {}), ...Object.keys(b.notes || {})]);
-        for (const k of noteKeys) {
-          const na = (a.notes && a.notes[k]) || { count: 0, correct: 0, timeMs: 0, recent: [] };
-          const nb = (b.notes && b.notes[k]) || { count: 0, correct: 0, timeMs: 0, recent: [] };
-          const recMap = new Map();
-          for (const item of [...(na.recent || []), ...(nb.recent || [])]) {
-            if (item && typeof item.t === 'number') recMap.set(item.t, item);
+
+        for (const m of STAT_MODES) {
+          const wKeys = new Set([...Object.keys(a.weakByMode[m]), ...Object.keys(b.weakByMode[m])]);
+          for (const k of wKeys) {
+            const wa = a.weakByMode[m][k] || { miss: 0, hit: 0 };
+            const wb = b.weakByMode[m][k] || { miss: 0, hit: 0 };
+            out.weakByMode[m][k] = {
+              miss: Math.max(Number(wa.miss) || 0, Number(wb.miss) || 0),
+              hit: Math.max(Number(wa.hit) || 0, Number(wb.hit) || 0)
+            };
           }
-          const recent = Array.from(recMap.values()).sort((x, y) => x.t - y.t).slice(-5);
-          out.notes[k] = {
-            count: Math.max(Number(na.count) || 0, Number(nb.count) || 0),
-            correct: Math.max(Number(na.correct) || 0, Number(nb.correct) || 0),
-            timeMs: Math.max(Number(na.timeMs) || 0, Number(nb.timeMs) || 0),
-            recent
-          };
+          const nKeys = new Set([...Object.keys(a.notesByMode[m]), ...Object.keys(b.notesByMode[m])]);
+          for (const k of nKeys) {
+            const na = a.notesByMode[m][k] || { count: 0, correct: 0, timeMs: 0, recent: [] };
+            const nb = b.notesByMode[m][k] || { count: 0, correct: 0, timeMs: 0, recent: [] };
+            const recMap = new Map();
+            for (const item of [...(na.recent || []), ...(nb.recent || [])]) {
+              if (item && typeof item.t === 'number') recMap.set(item.t, item);
+            }
+            const recent = Array.from(recMap.values()).sort((x, y) => x.t - y.t).slice(-5);
+            out.notesByMode[m][k] = {
+              count: Math.max(Number(na.count) || 0, Number(nb.count) || 0),
+              correct: Math.max(Number(na.correct) || 0, Number(nb.correct) || 0),
+              timeMs: Math.max(Number(na.timeMs) || 0, Number(nb.timeMs) || 0),
+              recent
+            };
+          }
         }
         merged[id] = out;
       }
@@ -1570,17 +1617,16 @@
           return true;
         }
 
-        // 3. 构造完整可读 JSON 推送回私有知识库
-        const slowNotesSummary = {};
-        for (const [k, s] of Object.entries(state.slowMap)) {
-          slowNotesSummary[k] = {
-            recentAvgSec: Number((s.recentAvgMs / 1000).toFixed(2)),
-            count: s.count,
-            accuracy: s.acc + '%'
-          };
-        }
+        // 3. 构造完整可读 JSON 推送回私有知识库（含双模式独立熟练度摘要）
+        const formatSlowSummary = (m) => {
+          const out = {};
+          for (const [k, s] of Object.entries(state.slowByMode[m] || {})) {
+            out[k] = { recentAvgSec: Number((s.recentAvgMs / 1000).toFixed(2)), count: s.count, accuracy: s.acc + '%' };
+          }
+          return out;
+        };
         const payload = {
-          schemaVersion: 3,
+          schemaVersion: 4,
           updatedAt: new Date().toISOString(),
           summary: {
             total: state.total,
@@ -1588,8 +1634,16 @@
             accuracy: state.total ? Math.round((state.correctCount / state.total) * 100) + '%' : '0%',
             avgSec: state.total ? Number((state.totalTimeMs / state.total / 1000).toFixed(2)) : 0,
             bestStreak: state.bestStreak,
-            weakNotes: state.weakMap,
-            slowNotesOver2s: slowNotesSummary
+            readMode: {
+              thresholdSec: 2,
+              weakNotes: state.weakByMode.read,
+              slowNotes: formatSlowSummary('read')
+            },
+            placeMode: {
+              thresholdSec: 5,
+              weakNotes: state.weakByMode.place,
+              slowNotes: formatSlowSummary('place')
+            }
           },
           dailySummary: state.daily,
           devices: state.devices
@@ -1942,13 +1996,17 @@
       }
 
       if (state.range === 'weak') {
-        const focusKeys = new Set([...Object.keys(state.weakMap), ...Object.keys(state.slowMap)]);
+        const sm = getStatMode();
+        const wMap = state.weakByMode[sm] || {};
+        const sMap = state.slowByMode[sm] || {};
+        const verySlowMs = sm === 'place' ? 8000 : 3500;
+        const focusKeys = new Set([...Object.keys(wMap), ...Object.keys(sMap)]);
         for (const k of focusKeys) {
           const [c, ds] = k.split(':');
           if (!clefs.includes(c)) continue;
-          const errW = Math.min(state.weakMap[k] || 0, 4);
-          const slowInfo = state.slowMap[k];
-          const slowW = slowInfo ? (slowInfo.recentAvgMs > 3500 ? 4 : 2) : 0;
+          const errW = Math.min(wMap[k] || 0, 4);
+          const slowInfo = sMap[k];
+          const slowW = slowInfo ? (slowInfo.recentAvgMs > verySlowMs ? 4 : 2) : 0;
           const weight = Math.min(6, Math.max(1, errW + slowW));
           for (let i = 0; i < weight; i++) pool.push({ clef: c, d: Number(ds) });
         }
@@ -2174,7 +2232,7 @@
             : '极速点谱模式：轻触或点击五线谱线/间后立即判定。';
         }
       } else {
-        const modeTitle = state.mode === 'anchors' ? '⚡ 锚点闪电战：秒出这个音！' : '请识别这个音符：';
+        const modeTitle = state.mode === 'anchors' ? '⚡ 锚点特训：秒出这个音！' : '请识别这个音符：';
         promptEl.innerHTML = `${modeTitle} <span class="clef-tag">${CLEF_META[clef].name}</span>`;
         ansGrid.style.display = 'grid';
         placeControls.style.display = 'none';
@@ -2189,6 +2247,9 @@
 
     function recordResult(isCorrect, detailText) {
       const { clef, d } = state.current;
+      const statMode = getStatMode();
+      const thresholdMs = MODE_THRESHOLD_MS[statMode];
+      const thresholdSec = thresholdMs / 1000;
       const rawElapsedMs = getCurrentElapsedMs();
       state.current.accumulatedMs = rawElapsedMs;
       state.current.segmentStart = null;
@@ -2205,16 +2266,21 @@
       const myDev = state.devices[syncCfg.deviceId];
       myDev.name = syncCfg.deviceName;
       if (!myDev.daily[today]) myDev.daily[today] = { total: 0, correct: 0, timeMs: 0 };
-      if (!myDev.notes) myDev.notes = {};
-      if (!myDev.notes[key]) myDev.notes[key] = { count: 0, correct: 0, timeMs: 0, recent: [] };
+      if (!myDev.weakByMode) myDev.weakByMode = { read: {}, place: {} };
+      if (!myDev.notesByMode) myDev.notesByMode = { read: {}, place: {} };
+      if (!myDev.weakByMode[statMode]) myDev.weakByMode[statMode] = {};
+      if (!myDev.notesByMode[statMode]) myDev.notesByMode[statMode] = {};
+      if (!myDev.notesByMode[statMode][key]) {
+        myDev.notesByMode[statMode][key] = { count: 0, correct: 0, timeMs: 0, recent: [] };
+      }
 
       state.current.answered = true;
       state.current.wasCorrect = isCorrect;
       myDev.daily[today].total += 1;
       myDev.daily[today].timeMs += cappedElapsedMs;
 
-      // 记录单音累计与近期 5 次作答耗时
-      const noteRec = myDev.notes[key];
+      // 按当前模式独立记录单音累计与近期 5 次作答耗时
+      const noteRec = myDev.notesByMode[statMode][key];
       noteRec.count += 1;
       noteRec.timeMs += cappedElapsedMs;
       if (isCorrect) noteRec.correct += 1;
@@ -2222,20 +2288,20 @@
       noteRec.recent.push({ t: Date.now(), ms: Math.round(cappedElapsedMs), ok: isCorrect });
       if (noteRec.recent.length > 5) noteRec.recent = noteRec.recent.slice(-5);
 
+      const curWeakMap = state.weakByMode[statMode] || {};
       if (isCorrect) {
         myDev.daily[today].correct += 1;
         state.streak += 1;
         if (state.streak > (myDev.bestStreak || 0)) myDev.bestStreak = state.streak;
-        // 仅当该音当前仍在错音池中时，答对才抵消 1 次失误
-        if (state.weakMap[key] > 0) {
-          if (!myDev.weak[key]) myDev.weak[key] = { miss: 0, hit: 0 };
-          myDev.weak[key].hit += 1;
+        if (curWeakMap[key] > 0) {
+          if (!myDev.weakByMode[statMode][key]) myDev.weakByMode[statMode][key] = { miss: 0, hit: 0 };
+          myDev.weakByMode[statMode][key].hit += 1;
         }
         playPianoNote(dToInfo(d).freq);
       } else {
         state.streak = 0;
-        if (!myDev.weak[key]) myDev.weak[key] = { miss: 0, hit: 0 };
-        myDev.weak[key].miss += 1;
+        if (!myDev.weakByMode[statMode][key]) myDev.weakByMode[statMode][key] = { miss: 0, hit: 0 };
+        myDev.weakByMode[statMode][key].miss += 1;
         playErrorTone();
       }
 
@@ -2251,12 +2317,12 @@
       const fb = document.getElementById('feedbackBar');
       const fbTxt = document.getElementById('feedbackText');
       const btnNext = document.getElementById('btnNext');
-      const isSlowThisTime = isCorrect && rawElapsedMs > SLOW_THRESHOLD_MS;
+      const isSlowThisTime = isCorrect && rawElapsedMs > thresholdMs;
 
       fb.className = `feedback ${!isCorrect ? 'err' : (isSlowThisTime ? 'slow' : 'ok')}`;
       const statusLabel = !isCorrect
         ? '✗ 再校准'
-        : (isSlowThisTime ? '✓ 正确但偏慢（>2s，已重点关注）' : '✓ 熟练');
+        : (isSlowThisTime ? `✓ 正确但偏慢（>${thresholdSec}s，已重点关注）` : '✓ 熟练');
       fbTxt.textContent = `${statusLabel}（${secStr}s）· ${detailText}`;
       btnNext.style.display = 'inline-block';
 
@@ -2334,22 +2400,16 @@
       const d = state.daily[today] || { total: 0, correct: 0, timeMs: 0 };
       const acc = d.total ? Math.round((d.correct / d.total) * 100) + '%' : '0%';
       const avg = d.total ? (d.timeMs / d.total / 1000).toFixed(2) + 's' : '--';
-      const weakTop = Object.entries(state.weakMap)
-        .filter(([, cnt]) => cnt > 0)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([k, cnt]) => {
-          const [clef, ds] = k.split(':');
-          return `${clef === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${cnt}次)`;
-        });
-      const slowTop = Object.entries(state.slowMap)
-        .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs)
-        .slice(0, 5)
-        .map(([k, s]) => {
-          const [clef, ds] = k.split(':');
-          return `${clef === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${(s.recentAvgMs / 1000).toFixed(1)}s)`;
-        });
-      return `【五线谱识谱战报 ${today}】今日完成 ${d.total} 题，正确率 ${acc}，平均反应 ${avg}，历史最高连胜 ${state.bestStreak}（累计 ${state.total} 题）。高频错音：${weakTop.length ? weakTop.join('、') : '无'}；不熟练慢音(>2s)：${slowTop.length ? slowTop.join('、') : '无'}。请帮我归档进今天的知识库打卡记录！`;
+      const fmtList = (m) => {
+        const w = Object.entries(state.weakByMode[m] || {})
+          .filter(([, cnt]) => cnt > 0).sort((a, b) => b[1] - a[1]).slice(0, 4)
+          .map(([k, cnt]) => { const [c, ds] = k.split(':'); return `${c === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(错${cnt})`; });
+        const s = Object.entries(state.slowByMode[m] || {})
+          .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs).slice(0, 4)
+          .map(([k, st]) => { const [c, ds] = k.split(':'); return `${c === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${(st.recentAvgMs / 1000).toFixed(1)}s)`; });
+        return `错音[${w.length ? w.join('、') : '无'}]/慢音[${s.length ? s.join('、') : '无'}]`;
+      };
+      return `【五线谱识谱战报 ${today}】今日完成 ${d.total} 题，正确率 ${acc}，平均反应 ${avg}，历史最高连胜 ${state.bestStreak}（累计 ${state.total} 题）。看谱认音(≤2s)：${fmtList('read')}；看音点谱(≤5s)：${fmtList('place')}。请帮我归档进今天的知识库打卡记录！`;
     }
 
     function applySavedPrefsToUI() {
@@ -2372,10 +2432,11 @@
       renderNoteAnalysisTable();
     }
 
-    function getNoteStatusStyle(key) {
-      const st = state.noteStats[key];
-      const errCnt = state.weakMap[key] || 0;
+    function getNoteStatusStyle(key, statMode) {
+      const st = (state.noteStatsByMode[statMode] || {})[key];
+      const errCnt = (state.weakByMode[statMode] || {})[key] || 0;
       const hasErr = errCnt > 0;
+      const thSec = MODE_THRESHOLD_MS[statMode] / 1000;
       if (!st && !hasErr) {
         return {
           code: 'none',
@@ -2410,7 +2471,7 @@
       if (isSlow) {
         return {
           code: 'slow',
-          label: '慢音 (>2s)',
+          label: `慢音 (>${thSec}s)`,
           fill: '#facc15',
           stroke: '#a16207',
           text: '#a16207',
@@ -2419,7 +2480,7 @@
       }
       return {
         code: 'ok',
-        label: '完全熟练 (≤2s)',
+        label: `完全熟练 (≤${thSec}s)`,
         fill: '#22a055',
         stroke: '#166534',
         text: '#166534',
@@ -2427,11 +2488,12 @@
       };
     }
 
-    function buildHeatmapStaffSvg(clef) {
-      // 收集该谱号核心音域 + 已练到的任何扩展音，按音高从低到高排布
+    function buildHeatmapStaffSvg(clef, statMode) {
+      const modeStats = state.noteStatsByMode[statMode] || {};
+      const modeWeak = state.weakByMode[statMode] || {};
       const baseRange = CLEF_META[clef].ranges.core;
       const dSet = new Set(baseRange);
-      for (const k of [...Object.keys(state.noteStats), ...Object.keys(state.weakMap)]) {
+      for (const k of [...Object.keys(modeStats), ...Object.keys(modeWeak)]) {
         const [c, ds] = k.split(':');
         if (c === clef) dSet.add(Number(ds));
       }
@@ -2441,7 +2503,7 @@
       const TOP_M = 66;
       const W = Math.max(660, 110 + dList.length * 36);
       const H = 214;
-      const scale = STEP_M / STEP_PX; // 5/6 = 0.833333
+      const scale = STEP_M / STEP_PX;
       const meta = CLEF_META[clef];
       const yM = (d) => TOP_M + (meta.topLineD - d) * STEP_M;
 
@@ -2451,7 +2513,6 @@
         xmlns: 'http://www.w3.org/2000/svg'
       });
 
-      // 五条线
       for (let i = 0; i < 5; i++) {
         const y = TOP_M + i * STEP_M * 2;
         s.appendChild(svgEl('line', {
@@ -2459,18 +2520,15 @@
           stroke: '#4a463f', 'stroke-width': 1.15
         }));
       }
-      // 起始竖线与终止双线
       s.appendChild(svgEl('line', { x1: 20, y1: TOP_M, x2: 20, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 1.8 }));
       s.appendChild(svgEl('line', { x1: W - 21, y1: TOP_M, x2: W - 21, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 1.2 }));
       s.appendChild(svgEl('line', { x1: W - 16, y1: TOP_M, x2: W - 16, y2: TOP_M + 8 * STEP_M, stroke: '#4a463f', 'stroke-width': 3.2 }));
 
-      // 精确缩放谱号（84 * 5/6 = 70 -> ty = 66 - 70 = -4，精确对齐 G4 / F3 线）
       const clefG = svgEl('g', { transform: `translate(-42, -4) scale(${scale})` });
       if (clef === 'treble') drawTrebleClef(clefG);
       else drawBassClef(clefG);
       s.appendChild(clefG);
 
-      // 等距排列圆形音符
       const startX = 96;
       const endX = W - 36;
       const dx = dList.length > 1 ? (endX - startX) / (dList.length - 1) : 0;
@@ -2480,18 +2538,16 @@
         const y = yM(d);
         const key = `${clef}:${d}`;
         const info = dToInfo(d);
-        const st = state.noteStats[key];
-        const sty = getNoteStatusStyle(key);
+        const st = modeStats[key];
+        const sty = getNoteStatusStyle(key, statMode);
 
         const g = svgEl('g', { class: 'heatmap-note-hit' });
 
-        // 极淡竖向参考引导线（方便上下对应音名和耗时）
         g.appendChild(svgEl('line', {
           x1: x, y1: y + 10, x2: x, y2: 180,
           stroke: '#e5dfd3', 'stroke-width': 0.8, 'stroke-dasharray': '2 3'
         }));
 
-        // 上下加线（按奇偶精确画在偶数线上）
         const halfW = 13;
         if (d >= meta.topLineD + 2) {
           for (let k = meta.topLineD + 2; k <= d; k += 2) {
@@ -2505,7 +2561,6 @@
           }
         }
 
-        // 圆形音符主体
         const circle = svgEl('circle', {
           class: 'note-dot',
           cx: x, cy: y, r: 7.8,
@@ -2516,7 +2571,6 @@
         });
         g.appendChild(circle);
 
-        // 底部对齐音名与近期耗时
         const nameTxt = svgEl('text', {
           x, y: 192, 'text-anchor': 'middle',
           fill: sty.code === 'none' ? '#9c968b' : '#1e2320',
@@ -2533,21 +2587,20 @@
         timeTxt.textContent = st ? `${(st.recentAvgMs / 1000).toFixed(1)}s` : '·';
         g.appendChild(timeTxt);
 
-        // 点击音符：发声 + 显示精确单音详情
         g.addEventListener('click', () => {
           playPianoNote(info.freq);
           const detailEl = document.getElementById('heatmapDetail');
           if (!detailEl) return;
           const pos = getStaffPositionLabel(clef, d);
-          const errCnt = state.weakMap[key] || 0;
+          const errCnt = modeWeak[key] || 0;
           if (!st && !errCnt) {
-            detailEl.innerHTML = `<span><strong>${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 尚未练到</span><span class="tag-mini" style="background:#f1ede4;color:var(--muted);">未练</span>`;
+            detailEl.innerHTML = `<span><strong>[${MODE_LABEL[statMode]}] ${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 该模式尚未练到</span><span class="tag-mini" style="background:#f1ede4;color:var(--muted);">未练</span>`;
           } else {
             const sec = st ? (st.recentAvgMs / 1000).toFixed(2) + 's' : '--';
             const cnt = st ? st.count : errCnt;
             const acc = st ? st.acc + '%' : '--';
             const cls = sty.code === 'both' ? 'both' : (sty.code === 'err' ? 'err' : (sty.code === 'slow' ? 'slow' : 'ok'));
-            detailEl.innerHTML = `<span><strong>${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 练过 ${cnt} 次 · 正确率 ${acc} · 近期均时 <strong>${sec}</strong>${errCnt ? ` · 待消错次 ${errCnt}` : ''}</span><span class="tag-mini ${cls}">${sty.label}</span>`;
+            detailEl.innerHTML = `<span><strong>[${MODE_LABEL[statMode]}] ${meta.name} ${info.name}（${info.solfege}）</strong> · ${pos} · 练过 ${cnt} 次 · 正确率 ${acc} · 近期均时 <strong>${sec}</strong>${errCnt ? ` · 待消错次 ${errCnt}` : ''}</span><span class="tag-mini ${cls}">${sty.label}</span>`;
           }
         });
 
@@ -2557,18 +2610,38 @@
       return s;
     }
 
+    function updateAnalysisButtonsUI() {
+      const btnRead = document.getElementById('btnToggleReadMap');
+      const btnPlace = document.getElementById('btnTogglePlaceMap');
+      const drawer = document.getElementById('analysisDrawer');
+      if (!btnRead || !btnPlace || !drawer) return;
+
+      const isRead = state.activeAnalysisMode === 'read';
+      const isPlace = state.activeAnalysisMode === 'place';
+      btnRead.classList.toggle('active-tab', isRead);
+      btnPlace.classList.toggle('active-tab', isPlace);
+      btnRead.textContent = `🎼 看谱认音熟练度 ${isRead ? '▴' : '▾'}`;
+      btnPlace.textContent = `🎯 看音点谱熟练度 ${isPlace ? '▴' : '▾'}`;
+      drawer.classList.toggle('open', isRead || isPlace);
+    }
+
     function renderNoteAnalysisTable() {
+      updateAnalysisButtonsUI();
       const drawer = document.getElementById('analysisDrawer');
       if (!drawer) return;
       drawer.innerHTML = '';
 
-      // 顶栏：图例 + 谱图/列表视图切换
+      const statMode = state.activeAnalysisMode;
+      if (!statMode) return;
+      const thSec = MODE_THRESHOLD_MS[statMode] / 1000;
+
+      // 顶栏：对应模式熟练度图例 + 谱图/列表视图切换
       const topbar = document.createElement('div');
       topbar.className = 'heatmap-topbar';
       topbar.innerHTML = `
         <div class="legend-row">
-          <span class="legend-item"><span class="legend-dot" style="background:#22a055;border-color:#166534;"></span>熟练 (≤2s)</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#facc15;border-color:#a16207;"></span>慢音 (&gt;2s)</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#22a055;border-color:#166534;"></span>熟练 (≤${thSec}s)</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#facc15;border-color:#a16207;"></span>慢音 (&gt;${thSec}s)</span>
           <span class="legend-item"><span class="legend-dot" style="background:#f97316;border-color:#c2410c;"></span>又慢又错</span>
           <span class="legend-item"><span class="legend-dot" style="background:#ef4444;border-color:#b91c1c;"></span>错音</span>
           <span class="legend-item"><span class="legend-dot" style="background:#fff;border-color:#c7c1b5;border-style:dashed;"></span>未练</span>
@@ -2591,28 +2664,28 @@
           box.className = 'heatmap-scroll';
           const title = document.createElement('div');
           title.className = 'heatmap-staff-title';
-          title.textContent = `${CLEF_META[c].name}单音熟练度（点任意圆点听音看详情）`;
+          title.textContent = `${MODE_LABEL[statMode]} · ${CLEF_META[c].name}单音熟练度（标准 ≤${thSec}s · 点圆点听音看详情）`;
           box.appendChild(title);
-          box.appendChild(buildHeatmapStaffSvg(c));
+          box.appendChild(buildHeatmapStaffSvg(c, statMode));
           drawer.appendChild(box);
         }
 
         const detail = document.createElement('div');
         detail.className = 'heatmap-detail';
         detail.id = 'heatmapDetail';
-        detail.innerHTML = '<span>轻点上方任意圆形音符，可试听钢琴音高并查看该音的详细次数、正确率与近期均时。</span>';
+        detail.innerHTML = `<span>当前展示「${MODE_LABEL[statMode]}」独立统计（熟练标准 ≤${thSec}s），轻点上方任意圆形音符查看详情。</span>`;
         drawer.appendChild(detail);
         return;
       }
 
       // 数字列表视图（按近期均时从慢到快排序）
-      const all = Object.entries(state.noteStats)
+      const all = Object.entries(state.noteStatsByMode[statMode] || {})
         .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs);
       const listBox = document.createElement('div');
       listBox.className = 'note-list-box';
 
       if (!all.length) {
-        listBox.innerHTML = '<div style="color:var(--muted); font-size:0.82rem; padding:6px 2px;">完成几道题后，这里会按反应速度从慢到快列出每一个音的详细数据。</div>';
+        listBox.innerHTML = `<div style="color:var(--muted); font-size:0.82rem; padding:6px 2px;">「${MODE_LABEL[statMode]}」模式暂无练习记录，完成几题后会按耗时从慢到快列出。</div>`;
         drawer.appendChild(listBox);
         return;
       }
@@ -2621,7 +2694,7 @@
       for (const [k, st] of all) {
         const [clef, dStr] = k.split(':');
         const info = dToInfo(Number(dStr));
-        const sty = getNoteStatusStyle(k);
+        const sty = getNoteStatusStyle(k, statMode);
         const sec = (st.recentAvgMs / 1000).toFixed(2) + 's';
         const cls = sty.code === 'both' ? 'both' : (sty.code === 'err' ? 'err' : (sty.code === 'slow' ? 'slow' : 'ok'));
 
@@ -2792,12 +2865,14 @@
       else startOrResumeTimer();
     });
 
-    document.getElementById('btnToggleAnalysis').addEventListener('click', () => {
-      const drawer = document.getElementById('analysisDrawer');
-      const btn = document.getElementById('btnToggleAnalysis');
-      const isOpen = drawer.classList.toggle('open');
-      btn.textContent = isOpen ? '🎼 单音熟练度 ▴' : '🎼 单音熟练度 ▾';
-      if (isOpen) renderNoteAnalysisTable();
+    document.getElementById('btnToggleReadMap').addEventListener('click', () => {
+      state.activeAnalysisMode = state.activeAnalysisMode === 'read' ? null : 'read';
+      renderNoteAnalysisTable();
+    });
+
+    document.getElementById('btnTogglePlaceMap').addEventListener('click', () => {
+      state.activeAnalysisMode = state.activeAnalysisMode === 'place' ? null : 'place';
+      renderNoteAnalysisTable();
     });
 
     document.getElementById('btnCopyReport').addEventListener('click', async () => {
