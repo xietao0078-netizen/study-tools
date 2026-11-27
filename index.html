@@ -459,6 +459,88 @@
 
     .btn-primary-sm:hover { opacity: 0.9; }
 
+    /* Cloud Sync Bar & Modal */
+    .sync-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 0.84rem;
+    }
+
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .sync-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #bdb7ab;
+      display: inline-block;
+    }
+
+    .sync-dot.ok { background: var(--ok); }
+    .sync-dot.busy { background: var(--anchor); }
+    .sync-dot.err { background: var(--err); }
+
+    .sync-drawer {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      display: none;
+      gap: 10px;
+      flex-direction: column;
+      font-size: 0.84rem;
+    }
+
+    .sync-drawer.open { display: flex; }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .field-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .field-item.full { grid-column: 1 / -1; }
+
+    .field-item label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .field-item input {
+      font: inherit;
+      padding: 8px 10px;
+      border-radius: 9px;
+      border: 1px solid var(--border);
+      background: #faf8f4;
+      color: var(--ink);
+    }
+
+    .sync-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    @media (max-width: 600px) {
+      .field-grid { grid-template-columns: 1fr; }
+    }
+
     .footer-tip {
       text-align: center;
       font-size: 0.78rem;
@@ -481,8 +563,54 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.1 · 阶段一（完整记录保存）</span>
+      <span class="badge-ver">v1.2 · 阶段一（多端云同步）</span>
     </header>
+
+    <!-- Cloud Sync Card -->
+    <div class="card" style="padding:13px 16px;">
+      <div class="sync-bar">
+        <div class="sync-status">
+          <span class="sync-dot" id="syncDot"></span>
+          <span id="syncStatusText">未开启 GitHub 云同步（仅保存在本设备）</span>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="icon-btn" id="btnSyncNow" style="display:none;">☁️ 立即同步</button>
+          <button class="icon-btn" id="btnToggleSyncConfig">⚙️ 云同步设置</button>
+        </div>
+      </div>
+
+      <div class="sync-drawer" id="syncDrawer">
+        <div style="color:var(--muted); font-size:0.8rem; line-height:1.5;">
+          使用仅限 <strong>knowledge-base</strong> 单仓库读写权限的 GitHub Token，将你的 iPhone 与 Mac 练习记录实时合并同步到私有知识库。令牌仅保存在本机浏览器中，绝不上传至公开页面。
+        </div>
+        <div class="field-grid">
+          <div class="field-item">
+            <label for="cfgOwner">GitHub 用户名</label>
+            <input id="cfgOwner" type="text" placeholder="xietao0078-netizen" />
+          </div>
+          <div class="field-item">
+            <label for="cfgRepo">私有知识库名</label>
+            <input id="cfgRepo" type="text" placeholder="knowledge-base" />
+          </div>
+          <div class="field-item">
+            <label for="cfgPath">同步文件路径</label>
+            <input id="cfgPath" type="text" placeholder="01-音乐通识/data-识谱记录.json" />
+          </div>
+          <div class="field-item">
+            <label for="cfgDeviceName">当前设备名称</label>
+            <input id="cfgDeviceName" type="text" placeholder="iPhone 或 Mac" />
+          </div>
+          <div class="field-item full">
+            <label for="cfgToken">GitHub Fine-grained Token（仅限本机保存）</label>
+            <input id="cfgToken" type="password" placeholder="粘贴以 github_pat_ 开头的令牌..." autocomplete="off" />
+          </div>
+        </div>
+        <div class="sync-actions">
+          <button class="btn-primary-sm" id="btnSaveSync">保存并立即测试同步</button>
+          <button class="icon-btn" id="btnClearSync">清除本机令牌</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Controls -->
     <div class="card">
@@ -580,8 +708,8 @@
 
       <div class="history-section">
         <div class="history-header">
-          <strong style="color:var(--ink);">最近 7 天练习记录（自动保存在本设备）</strong>
-          <span style="color:var(--muted); font-size:0.78rem;">提示：在 iPhone 上请固定从主屏幕图标打开以保留记录</span>
+          <strong style="color:var(--ink);">最近 7 天练习记录（跨设备自动合并汇总）</strong>
+          <span style="color:var(--muted); font-size:0.78rem;" id="deviceSummaryLbl">当前设备：本地</span>
         </div>
         <div class="history-list" id="historyList"></div>
       </div>
@@ -767,14 +895,49 @@
     }
 
     /* ============================================================
-       3. 应用状态与持久化（localStorage 完整记录 + 每日统计）
+       3. 应用状态、按设备无冲突账本（CRDT）与 GitHub 私有库云同步
     ============================================================ */
     const STORAGE_KEY = 'kb_sightreading_v1';
+    const SYNC_CFG_KEY = 'kb_sightreading_sync_cfg_v1';
+
+    function detectDeviceName() {
+      const ua = navigator.userAgent || '';
+      if (/iPhone/i.test(ua)) return 'iPhone';
+      if (/iPad/i.test(ua)) return 'iPad';
+      if (/Macintosh|Mac OS/i.test(ua)) return 'Mac';
+      if (/Android/i.test(ua)) return 'Android';
+      return '浏览器设备';
+    }
+
+    function makeDeviceId() {
+      return 'dev_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    }
+
     const saved = (() => {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
       catch { return {}; }
     })();
     const savedPrefs = saved.prefs || {};
+
+    const syncCfg = (() => {
+      const def = {
+        owner: 'xietao0078-netizen',
+        repo: 'knowledge-base',
+        path: '01-音乐通识/data-识谱记录.json',
+        token: '',
+        deviceId: saved.deviceId || makeDeviceId(),
+        deviceName: detectDeviceName()
+      };
+      try {
+        return { ...def, ...(JSON.parse(localStorage.getItem(SYNC_CFG_KEY)) || {}) };
+      } catch {
+        return def;
+      }
+    })();
+
+    function saveSyncCfg() {
+      try { localStorage.setItem(SYNC_CFG_KEY, JSON.stringify(syncCfg)); } catch {}
+    }
 
     function getTodayStr() {
       const d = new Date();
@@ -784,39 +947,140 @@
       return `${y}-${m}-${day}`;
     }
 
+    function emptyDeviceBucket(name) {
+      return { name: name || syncCfg.deviceName, bestStreak: 0, daily: {}, weak: {} };
+    }
+
+    // 兼容迁移 v1.1 旧数据到当前设备账本
+    const initialDevices = saved.devices ? JSON.parse(JSON.stringify(saved.devices)) : {};
+    if (!initialDevices[syncCfg.deviceId]) {
+      const bucket = emptyDeviceBucket(syncCfg.deviceName);
+      if (saved.daily && Object.keys(saved.daily).length) {
+        bucket.daily = JSON.parse(JSON.stringify(saved.daily));
+      }
+      if (saved.bestStreak) bucket.bestStreak = Number(saved.bestStreak) || 0;
+      if (saved.weakMap && Object.keys(saved.weakMap).length) {
+        for (const [k, cnt] of Object.entries(saved.weakMap)) {
+          if (cnt > 0) bucket.weak[k] = { miss: cnt, hit: 0 };
+        }
+      }
+      initialDevices[syncCfg.deviceId] = bucket;
+    }
+
     const state = {
-      mode: savedPrefs.mode || 'read',             // 'read' | 'place' | 'anchors'
-      clefFilter: savedPrefs.clefFilter || 'both', // 'both' | 'treble' | 'bass'
-      range: savedPrefs.range || 'core',           // 'near_anchors' | 'core' | 'extended' | 'weak'
+      mode: savedPrefs.mode || 'read',
+      clefFilter: savedPrefs.clefFilter || 'both',
+      range: savedPrefs.range || 'core',
       showAnchors: savedPrefs.showAnchors !== undefined ? savedPrefs.showAnchors : true,
       sound: savedPrefs.sound !== undefined ? savedPrefs.sound : true,
       autoNext: savedPrefs.autoNext !== undefined ? savedPrefs.autoNext : true,
 
-      current: null,       // { clef, d, startTime, answered }
+      current: null,
       hoverD: null,
-      placedResult: null,  // { clickedD, isCorrect }
+      placedResult: null,
 
       streak: Number(saved.streak) || 0,
-      bestStreak: Number(saved.bestStreak) || 0,
-      total: Number(saved.total) || 0,
-      correctCount: Number(saved.correctCount) || 0,
-      totalTimeMs: Number(saved.totalTimeMs) || 0,
-      weakMap: saved.weakMap || {}, // key: `${clef}:${d}` -> miss count
-      daily: saved.daily || {}      // key: 'YYYY-MM-DD' -> { total, correct, timeMs }
+      devices: initialDevices,
+
+      // 以下字段由 devices 自动聚合计算
+      bestStreak: 0,
+      total: 0,
+      correctCount: 0,
+      totalTimeMs: 0,
+      daily: {},
+      weakMap: {},
+
+      unsyncedAnswers: 0,
+      syncing: false
     };
 
     let autoNextTimer = null;
+    let syncDebounceTimer = null;
+
+    function recomputeAggregates() {
+      let total = 0, correctCount = 0, totalTimeMs = 0, bestStreak = 0;
+      const daily = {};
+      const weakRaw = {};
+
+      for (const dev of Object.values(state.devices)) {
+        if (!dev) continue;
+        bestStreak = Math.max(bestStreak, Number(dev.bestStreak) || 0);
+        for (const [dt, d] of Object.entries(dev.daily || {})) {
+          if (!daily[dt]) daily[dt] = { total: 0, correct: 0, timeMs: 0 };
+          const t = Number(d.total) || 0;
+          const c = Number(d.correct) || 0;
+          const ms = Number(d.timeMs) || 0;
+          daily[dt].total += t;
+          daily[dt].correct += c;
+          daily[dt].timeMs += ms;
+          total += t;
+          correctCount += c;
+          totalTimeMs += ms;
+        }
+        for (const [k, w] of Object.entries(dev.weak || {})) {
+          if (!weakRaw[k]) weakRaw[k] = { miss: 0, hit: 0 };
+          weakRaw[k].miss += Number(w.miss) || 0;
+          weakRaw[k].hit += Number(w.hit) || 0;
+        }
+      }
+
+      const weakMap = {};
+      for (const [k, w] of Object.entries(weakRaw)) {
+        const net = w.miss - w.hit;
+        if (net > 0) weakMap[k] = net;
+      }
+
+      state.total = total;
+      state.correctCount = correctCount;
+      state.totalTimeMs = totalTimeMs;
+      state.bestStreak = Math.max(bestStreak, state.streak);
+      state.daily = daily;
+      state.weakMap = weakMap;
+    }
+
+    function mergeDeviceBuckets(localDevs, remoteDevs) {
+      const merged = {};
+      const allIds = new Set([...Object.keys(localDevs || {}), ...Object.keys(remoteDevs || {})]);
+      for (const id of allIds) {
+        const a = localDevs[id] || emptyDeviceBucket();
+        const b = remoteDevs[id] || emptyDeviceBucket();
+        const out = {
+          name: (id === syncCfg.deviceId ? syncCfg.deviceName : (b.name || a.name || id)),
+          bestStreak: Math.max(Number(a.bestStreak) || 0, Number(b.bestStreak) || 0),
+          daily: {},
+          weak: {}
+        };
+        const dates = new Set([...Object.keys(a.daily || {}), ...Object.keys(b.daily || {})]);
+        for (const dt of dates) {
+          const da = (a.daily && a.daily[dt]) || { total: 0, correct: 0, timeMs: 0 };
+          const db = (b.daily && b.daily[dt]) || { total: 0, correct: 0, timeMs: 0 };
+          out.daily[dt] = {
+            total: Math.max(Number(da.total) || 0, Number(db.total) || 0),
+            correct: Math.max(Number(da.correct) || 0, Number(db.correct) || 0),
+            timeMs: Math.max(Number(da.timeMs) || 0, Number(db.timeMs) || 0)
+          };
+        }
+        const keys = new Set([...Object.keys(a.weak || {}), ...Object.keys(b.weak || {})]);
+        for (const k of keys) {
+          const wa = (a.weak && a.weak[k]) || { miss: 0, hit: 0 };
+          const wb = (b.weak && b.weak[k]) || { miss: 0, hit: 0 };
+          out.weak[k] = {
+            miss: Math.max(Number(wa.miss) || 0, Number(wb.miss) || 0),
+            hit: Math.max(Number(wa.hit) || 0, Number(wb.hit) || 0)
+          };
+        }
+        merged[id] = out;
+      }
+      return merged;
+    }
 
     function persist() {
+      recomputeAggregates();
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          deviceId: syncCfg.deviceId,
           streak: state.streak,
-          bestStreak: state.bestStreak,
-          total: state.total,
-          correctCount: state.correctCount,
-          totalTimeMs: state.totalTimeMs,
-          weakMap: state.weakMap,
-          daily: state.daily,
+          devices: state.devices,
           prefs: {
             mode: state.mode,
             clefFilter: state.clefFilter,
@@ -828,6 +1092,154 @@
         }));
       } catch {}
     }
+
+    /* ============================================================
+       3.5 GitHub Contents API 云同步引擎（UTF-8 安全 + 冲突自动重试）
+    ============================================================ */
+    function utf8ToBase64(str) {
+      const bytes = new TextEncoder().encode(str);
+      let bin = '';
+      for (const b of bytes) bin += String.fromCharCode(b);
+      return btoa(bin);
+    }
+
+    function base64ToUtf8(b64) {
+      const bin = atob((b64 || '').replace(/\n/g, ''));
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    function setSyncStatus(kind, msg) {
+      const dot = document.getElementById('syncDot');
+      const txt = document.getElementById('syncStatusText');
+      const btn = document.getElementById('btnSyncNow');
+      if (!dot || !txt) return;
+      dot.className = 'sync-dot' + (kind ? ` ${kind}` : '');
+      txt.textContent = msg;
+      if (btn) btn.style.display = syncCfg.token ? 'inline-block' : 'none';
+    }
+
+    function buildApiUrl() {
+      const encodedPath = syncCfg.path.split('/').map(encodeURIComponent).join('/');
+      return `https://api.github.com/repos/${encodeURIComponent(syncCfg.owner)}/${encodeURIComponent(syncCfg.repo)}/contents/${encodedPath}`;
+    }
+
+    async function syncWithGitHub(opts = {}) {
+      const { pullOnly = false, retry = 0 } = opts;
+      if (!syncCfg.token || !syncCfg.owner || !syncCfg.repo || !syncCfg.path) {
+        setSyncStatus('', '未开启 GitHub 云同步（仅保存在本设备）');
+        return false;
+      }
+      if (state.syncing && retry === 0) return false;
+      state.syncing = true;
+      setSyncStatus('busy', '正在与私有知识库同步...');
+
+      const headers = {
+        'Authorization': `Bearer ${syncCfg.token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      };
+
+      try {
+        // 1. 拉取远程现有数据与 sha
+        let remoteSha = null;
+        let remoteDevices = {};
+        const getResp = await fetch(buildApiUrl() + `?t=${Date.now()}`, { headers, cache: 'no-store' });
+
+        if (getResp.status === 200) {
+          const fileObj = await getResp.json();
+          remoteSha = fileObj.sha;
+          try {
+            const parsed = JSON.parse(base64ToUtf8(fileObj.content));
+            remoteDevices = parsed.devices || {};
+          } catch {}
+        } else if (getResp.status === 404) {
+          remoteSha = null;
+          remoteDevices = {};
+        } else if (getResp.status === 401 || getResp.status === 403) {
+          throw new Error('令牌无效或缺少 Contents 读写权限');
+        } else {
+          throw new Error(`拉取失败 (HTTP ${getResp.status})`);
+        }
+
+        // 2. 无冲突合并所有设备账本
+        state.devices = mergeDeviceBuckets(state.devices, remoteDevices);
+        persist();
+        updateStats();
+        renderWeakChips();
+        renderHistory();
+
+        if (pullOnly && remoteSha !== null && state.unsyncedAnswers === 0) {
+          const nowStr = new Date().toTimeString().slice(0, 5);
+          setSyncStatus('ok', `已同步知识库 · ${nowStr}（共 ${Object.keys(state.devices).length} 台设备汇总）`);
+          state.syncing = false;
+          return true;
+        }
+
+        // 3. 构造完整可读 JSON 推送回私有知识库
+        const payload = {
+          schemaVersion: 2,
+          updatedAt: new Date().toISOString(),
+          summary: {
+            total: state.total,
+            correct: state.correctCount,
+            accuracy: state.total ? Math.round((state.correctCount / state.total) * 100) + '%' : '0%',
+            avgSec: state.total ? Number((state.totalTimeMs / state.total / 1000).toFixed(2)) : 0,
+            bestStreak: state.bestStreak,
+            weakNotes: state.weakMap
+          },
+          dailySummary: state.daily,
+          devices: state.devices
+        };
+
+        const putBody = {
+          message: `sync: 更新五线谱识谱记录 (${syncCfg.deviceName} · 累计 ${state.total} 题)`,
+          content: utf8ToBase64(JSON.stringify(payload, null, 2) + '\n')
+        };
+        if (remoteSha) putBody.sha = remoteSha;
+
+        const putResp = await fetch(buildApiUrl(), {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(putBody)
+        });
+
+        if (putResp.status === 409 && retry < 1) {
+          state.syncing = false;
+          return await syncWithGitHub({ pullOnly: false, retry: retry + 1 });
+        }
+        if (!putResp.ok) {
+          if (putResp.status === 403 || putResp.status === 401) {
+            throw new Error('令牌缺少该仓库的 Contents 写入权限');
+          }
+          throw new Error(`推送失败 (HTTP ${putResp.status})`);
+        }
+
+        state.unsyncedAnswers = 0;
+        const nowStr = new Date().toTimeString().slice(0, 5);
+        setSyncStatus('ok', `已同步到知识库 · ${nowStr}（共 ${Object.keys(state.devices).length} 台设备汇总）`);
+        state.syncing = false;
+        return true;
+      } catch (err) {
+        setSyncStatus('err', `同步失败：${err.message || '网络异常'}`);
+        state.syncing = false;
+        return false;
+      }
+    }
+
+    function scheduleAutoSync() {
+      if (!syncCfg.token) return;
+      state.unsyncedAnswers += 1;
+      clearTimeout(syncDebounceTimer);
+      if (state.unsyncedAnswers >= 5) {
+        syncWithGitHub({ pullOnly: false });
+      } else {
+        setSyncStatus('busy', `待同步（${state.unsyncedAnswers} 题未上传，停顿后自动同步）`);
+        syncDebounceTimer = setTimeout(() => syncWithGitHub({ pullOnly: false }), 12000);
+      }
+    }
+
+    recomputeAggregates();
 
     /* ============================================================
        4. SVG 五线谱与谱号渲染器（精确对齐每条线与加线）
@@ -1143,31 +1555,32 @@
       const key = `${clef}:${d}`;
       const today = getTodayStr();
 
-      if (!state.daily[today]) {
-        state.daily[today] = { total: 0, correct: 0, timeMs: 0 };
+      if (!state.devices[syncCfg.deviceId]) {
+        state.devices[syncCfg.deviceId] = emptyDeviceBucket(syncCfg.deviceName);
       }
+      const myDev = state.devices[syncCfg.deviceId];
+      myDev.name = syncCfg.deviceName;
+      if (!myDev.daily[today]) myDev.daily[today] = { total: 0, correct: 0, timeMs: 0 };
 
       state.current.answered = true;
       state.current.wasCorrect = isCorrect;
-      state.total += 1;
-      state.totalTimeMs += cappedElapsedMs;
-      state.daily[today].total += 1;
-      state.daily[today].timeMs += cappedElapsedMs;
+      myDev.daily[today].total += 1;
+      myDev.daily[today].timeMs += cappedElapsedMs;
 
       if (isCorrect) {
-        state.correctCount += 1;
-        state.daily[today].correct += 1;
+        myDev.daily[today].correct += 1;
         state.streak += 1;
-        if (state.streak > state.bestStreak) state.bestStreak = state.streak;
-        // 答对则减轻该音错题权重
-        if (state.weakMap[key]) {
-          state.weakMap[key] = Math.max(0, state.weakMap[key] - 1);
-          if (state.weakMap[key] === 0) delete state.weakMap[key];
+        if (state.streak > (myDev.bestStreak || 0)) myDev.bestStreak = state.streak;
+        // 仅当该音当前仍在错音池中时，答对才抵消 1 次失误
+        if (state.weakMap[key] > 0) {
+          if (!myDev.weak[key]) myDev.weak[key] = { miss: 0, hit: 0 };
+          myDev.weak[key].hit += 1;
         }
         playPianoNote(dToInfo(d).freq);
       } else {
         state.streak = 0;
-        state.weakMap[key] = (state.weakMap[key] || 0) + 1;
+        if (!myDev.weak[key]) myDev.weak[key] = { miss: 0, hit: 0 };
+        myDev.weak[key].miss += 1;
         playErrorTone();
       }
 
@@ -1176,6 +1589,7 @@
       renderWeakChips();
       renderHistory();
       renderStaff();
+      scheduleAutoSync();
 
       const fb = document.getElementById('feedbackBar');
       const fbTxt = document.getElementById('feedbackText');
@@ -1249,6 +1663,9 @@
         </div>`;
       }
       wrap.innerHTML = html;
+      const devNames = Object.values(state.devices).map(x => x.name).filter(Boolean);
+      const lbl = document.getElementById('deviceSummaryLbl');
+      if (lbl) lbl.textContent = `数据来源：${devNames.length ? devNames.join(' + ') : syncCfg.deviceName}`;
     }
 
     function buildDailyReportText() {
@@ -1412,14 +1829,58 @@
     });
 
     document.getElementById('btnResetStats').addEventListener('click', () => {
-      if (!confirm('确定要清空所有练习统计、每日历史和易错音记录吗？')) return;
-      state.streak = 0; state.bestStreak = 0; state.total = 0; state.correctCount = 0; state.totalTimeMs = 0;
-      state.weakMap = {};
-      state.daily = {};
+      if (!confirm('确定要清空当前设备的本地统计吗？（已同步到其他设备的数据不会受影响）')) return;
+      state.streak = 0;
+      state.devices = { [syncCfg.deviceId]: emptyDeviceBucket(syncCfg.deviceName) };
       persist();
       updateStats();
       renderWeakChips();
       renderHistory();
+    });
+
+    // 云同步设置面板交互
+    function fillSyncForm() {
+      document.getElementById('cfgOwner').value = syncCfg.owner;
+      document.getElementById('cfgRepo').value = syncCfg.repo;
+      document.getElementById('cfgPath').value = syncCfg.path;
+      document.getElementById('cfgDeviceName').value = syncCfg.deviceName;
+      document.getElementById('cfgToken').value = syncCfg.token;
+    }
+
+    document.getElementById('btnToggleSyncConfig').addEventListener('click', () => {
+      fillSyncForm();
+      document.getElementById('syncDrawer').classList.toggle('open');
+    });
+
+    document.getElementById('btnSyncNow').addEventListener('click', () => {
+      syncWithGitHub({ pullOnly: false });
+    });
+
+    document.getElementById('btnSaveSync').addEventListener('click', async () => {
+      syncCfg.owner = document.getElementById('cfgOwner').value.trim() || 'xietao0078-netizen';
+      syncCfg.repo = document.getElementById('cfgRepo').value.trim() || 'knowledge-base';
+      syncCfg.path = document.getElementById('cfgPath').value.trim() || '01-音乐通识/data-识谱记录.json';
+      syncCfg.deviceName = document.getElementById('cfgDeviceName').value.trim() || detectDeviceName();
+      syncCfg.token = document.getElementById('cfgToken').value.trim();
+      if (state.devices[syncCfg.deviceId]) state.devices[syncCfg.deviceId].name = syncCfg.deviceName;
+      saveSyncCfg();
+      persist();
+      const ok = await syncWithGitHub({ pullOnly: false });
+      if (ok) document.getElementById('syncDrawer').classList.remove('open');
+    });
+
+    document.getElementById('btnClearSync').addEventListener('click', () => {
+      syncCfg.token = '';
+      saveSyncCfg();
+      fillSyncForm();
+      setSyncStatus('', '已清除本机令牌（仅保存在本设备）');
+    });
+
+    // 页面切回后台前尽力触发同步
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && syncCfg.token && state.unsyncedAnswers > 0) {
+        syncWithGitHub({ pullOnly: false });
+      }
     });
 
     // 键盘快捷键
@@ -1442,10 +1903,16 @@
     // 启动
     initAnswerButtons();
     applySavedPrefsToUI();
+    fillSyncForm();
     updateStats();
     renderWeakChips();
     renderHistory();
     nextQuestion();
+    if (syncCfg.token) {
+      syncWithGitHub({ pullOnly: true });
+    } else {
+      setSyncStatus('', '未开启 GitHub 云同步（点右侧设置连接私有知识库）');
+    }
   </script>
 </body>
 </html>
