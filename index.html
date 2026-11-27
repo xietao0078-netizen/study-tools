@@ -805,10 +805,132 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.5 · 阶段一（五线谱熟练度热力图）</span>
+      <span class="badge-ver">v1.5.1 · 阶段一（练习优先布局）</span>
     </header>
 
-    <!-- Cloud Sync Card -->
+    <!-- 1. Controls: 练习模式、难度与功能选择 -->
+    <div class="card">
+      <div class="controls">
+        <div class="seg-group" id="modeGroup">
+          <button class="seg-btn active" data-mode="read">看谱 → 选音名</button>
+          <button class="seg-btn" data-mode="place">看音名 → 点五线谱</button>
+          <button class="seg-btn" data-mode="anchors">7 锚点闪电战</button>
+        </div>
+
+        <div class="seg-group" id="clefGroup">
+          <button class="seg-btn active" data-clef="both">高低混合</button>
+          <button class="seg-btn" data-clef="treble">高音谱号</button>
+          <button class="seg-btn" data-clef="bass">低音谱号</button>
+        </div>
+      </div>
+
+      <div class="sub-controls">
+        <label>
+          音域难度：
+          <select id="rangeSelect">
+            <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
+            <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
+            <option value="extended">加线扩展音域（A1–E6）</option>
+            <option value="weak">🎯 重点训练（错音 + 慢音 &gt;2s）</option>
+          </select>
+        </label>
+
+        <label><input type="checkbox" id="toggleAnchors" checked /> 显示 7 锚点辅助线</label>
+        <label><input type="checkbox" id="toggleSound" checked /> 钢琴音高发声</label>
+        <label><input type="checkbox" id="toggleAutoNext" checked /> 答对自动下一题</label>
+      </div>
+    </div>
+
+    <!-- 2. Main Practice Card: 练习模块 -->
+    <div class="card">
+      <div class="timer-bar">
+        <div class="timer-readout" id="timerReadout">⏱ 未开始计时（停留不计入用时）</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
+          <button class="icon-btn" id="btnReplay">🔊 听音高</button>
+          <button class="icon-btn" id="btnSkip">换一题 ↻</button>
+        </div>
+      </div>
+
+      <div class="prompt-bar">
+        <div class="prompt-main" id="promptMain">点击「开始计时」后显示题目</div>
+      </div>
+
+      <div class="staff-wrap" id="staffWrap">
+        <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="staff-overlay" id="staffOverlay">
+          <div class="overlay-title" id="overlayTitle">准备好了吗？</div>
+          <div class="overlay-sub" id="overlaySub">点击下方按钮才会显示音符并开始计时，停留在本页面不会计入平均反应时间。</div>
+          <button class="btn-overlay-start" id="btnOverlayStart">▶ 开始计时练习</button>
+        </div>
+      </div>
+
+      <!-- Mode A / Anchors Answer Buttons -->
+      <div class="answer-grid" id="answerGrid"></div>
+
+      <!-- Mode B Place Hint -->
+      <div class="place-hint" id="placeHint" style="display:none;">
+        在上方五线谱中移动鼠标（或轻触）定位线与间，点击即可放音判定
+      </div>
+
+      <div class="feedback" id="feedbackBar">
+        <span id="feedbackText">提示：优先找最近的锚点（高音 C4/G4/C5/C6，低音 C2/C3/F3/C4），不要从中央 C 一格格数！</span>
+        <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
+      </div>
+    </div>
+
+    <!-- 3. Stats & Analysis: 统计记录、五线谱熟练度图与 7 天历史 -->
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-val" id="statStreak">0</div>
+        <div class="stat-lbl" id="statBestLbl">当前连胜（最高 0）</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statAcc">--%</div>
+        <div class="stat-lbl">累计正确率</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statAvg">--s</div>
+        <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statTotal">0 / 0</div>
+        <div class="stat-lbl">今日 / 累计题数</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="weak-panel" style="align-items:flex-start;">
+        <div class="weak-rows">
+          <div class="weak-chips" id="weakChips">
+            <strong style="color:var(--ink);">高频错音：</strong>
+            <span class="chip empty">暂无错音，继续保持！</span>
+          </div>
+          <div class="weak-chips" id="slowChips">
+            <strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>
+            <span class="chip empty">暂无慢音，反应很快！</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn-primary-sm" id="btnFocusDrill">🎯 重点训练弱项</button>
+          <button class="icon-btn" id="btnToggleAnalysis">🎼 隐藏单音谱图</button>
+          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
+          <button class="icon-btn" id="btnResetStats">重置统计</button>
+        </div>
+      </div>
+
+      <div class="analysis-drawer open" id="analysisDrawer"></div>
+
+      <div class="history-section">
+        <div class="history-header">
+          <strong style="color:var(--ink);">最近 7 天练习记录（跨设备自动合并汇总）</strong>
+          <span style="color:var(--muted); font-size:0.78rem;" id="deviceSummaryLbl">当前设备：本地</span>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
+
+    <!-- 4. Cloud Sync Card: GitHub 云同步设置 -->
     <div class="card" style="padding:13px 16px;">
       <div class="sync-bar">
         <div class="sync-status">
@@ -851,129 +973,6 @@
           <button class="btn-primary-sm" id="btnSaveSync">保存并立即测试同步</button>
           <button class="icon-btn" id="btnClearSync">清除本机令牌</button>
         </div>
-      </div>
-    </div>
-
-    <!-- Controls -->
-    <div class="card">
-      <div class="controls">
-        <div class="seg-group" id="modeGroup">
-          <button class="seg-btn active" data-mode="read">看谱 → 选音名</button>
-          <button class="seg-btn" data-mode="place">看音名 → 点五线谱</button>
-          <button class="seg-btn" data-mode="anchors">7 锚点闪电战</button>
-        </div>
-
-        <div class="seg-group" id="clefGroup">
-          <button class="seg-btn active" data-clef="both">高低混合</button>
-          <button class="seg-btn" data-clef="treble">高音谱号</button>
-          <button class="seg-btn" data-clef="bass">低音谱号</button>
-        </div>
-      </div>
-
-      <div class="sub-controls">
-        <label>
-          音域难度：
-          <select id="rangeSelect">
-            <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
-            <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
-            <option value="extended">加线扩展音域（A1–E6）</option>
-            <option value="weak">🎯 重点训练（错音 + 慢音 &gt;2s）</option>
-          </select>
-        </label>
-
-        <label><input type="checkbox" id="toggleAnchors" checked /> 显示 7 锚点辅助线</label>
-        <label><input type="checkbox" id="toggleSound" checked /> 钢琴音高发声</label>
-        <label><input type="checkbox" id="toggleAutoNext" checked /> 答对自动下一题</label>
-      </div>
-    </div>
-
-    <!-- Stats -->
-    <div class="stats">
-      <div class="stat-box">
-        <div class="stat-val" id="statStreak">0</div>
-        <div class="stat-lbl" id="statBestLbl">当前连胜（最高 0）</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statAcc">--%</div>
-        <div class="stat-lbl">累计正确率</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statAvg">--s</div>
-        <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statTotal">0 / 0</div>
-        <div class="stat-lbl">今日 / 累计题数</div>
-      </div>
-    </div>
-
-    <!-- Main Practice Card -->
-    <div class="card">
-      <div class="timer-bar">
-        <div class="timer-readout" id="timerReadout">⏱ 未开始计时（停留不计入用时）</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
-          <button class="icon-btn" id="btnReplay">🔊 听音高</button>
-          <button class="icon-btn" id="btnSkip">换一题 ↻</button>
-        </div>
-      </div>
-
-      <div class="prompt-bar">
-        <div class="prompt-main" id="promptMain">点击「开始计时」后显示题目</div>
-      </div>
-
-      <div class="staff-wrap" id="staffWrap">
-        <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="staff-overlay" id="staffOverlay">
-          <div class="overlay-title" id="overlayTitle">准备好了吗？</div>
-          <div class="overlay-sub" id="overlaySub">点击下方按钮才会显示音符并开始计时，停留在本页面不会计入平均反应时间。</div>
-          <button class="btn-overlay-start" id="btnOverlayStart">▶ 开始计时练习</button>
-        </div>
-      </div>
-
-      <!-- Mode A / Anchors Answer Buttons -->
-      <div class="answer-grid" id="answerGrid"></div>
-
-      <!-- Mode B Place Hint -->
-      <div class="place-hint" id="placeHint" style="display:none;">
-        在上方五线谱中移动鼠标（或轻触）定位线与间，点击即可放音判定
-      </div>
-
-      <div class="feedback" id="feedbackBar">
-        <span id="feedbackText">提示：优先找最近的锚点（高音 C4/G4/C5/C6，低音 C2/C3/F3/C4），不要从中央 C 一格格数！</span>
-        <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
-      </div>
-    </div>
-
-    <!-- Weak Notes, Slow Note Analysis & Practice History -->
-    <div class="card">
-      <div class="weak-panel" style="align-items:flex-start;">
-        <div class="weak-rows">
-          <div class="weak-chips" id="weakChips">
-            <strong style="color:var(--ink);">高频错音：</strong>
-            <span class="chip empty">暂无错音，继续保持！</span>
-          </div>
-          <div class="weak-chips" id="slowChips">
-            <strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>
-            <span class="chip empty">暂无慢音，反应很快！</span>
-          </div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn-primary-sm" id="btnFocusDrill">🎯 重点训练弱项</button>
-          <button class="icon-btn" id="btnToggleAnalysis">🎼 隐藏单音谱图</button>
-          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
-          <button class="icon-btn" id="btnResetStats">重置统计</button>
-        </div>
-      </div>
-
-      <div class="analysis-drawer open" id="analysisDrawer"></div>
-
-      <div class="history-section">
-        <div class="history-header">
-          <strong style="color:var(--ink);">最近 7 天练习记录（跨设备自动合并汇总）</strong>
-          <span style="color:var(--muted); font-size:0.78rem;" id="deviceSummaryLbl">当前设备：本地</span>
-        </div>
-        <div class="history-list" id="historyList"></div>
       </div>
     </div>
 
