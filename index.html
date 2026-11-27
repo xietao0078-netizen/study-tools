@@ -31,11 +31,11 @@
 
     body {
       margin: 0;
-      padding: 20px 14px 40px;
+      padding: 10px 12px calc(76px + env(safe-area-inset-bottom, 0px));
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
       background: var(--bg);
       color: var(--ink);
-      line-height: 1.5;
+      line-height: 1.45;
     }
 
     .app {
@@ -46,32 +46,26 @@
     header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 16px;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
     }
 
     h1 {
       margin: 0;
-      font-size: 1.45rem;
-      font-weight: 700;
+      font-size: 1.18rem;
+      font-weight: 800;
       letter-spacing: -0.02em;
     }
 
-    .subtitle {
-      font-size: 0.86rem;
-      color: var(--muted);
-      margin-top: 2px;
-    }
-
     .badge-ver {
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       color: var(--accent);
       background: var(--accent-soft);
-      padding: 4px 10px;
+      padding: 3px 9px;
       border-radius: 999px;
-      font-weight: 600;
+      font-weight: 700;
+      white-space: nowrap;
     }
 
     .card {
@@ -79,8 +73,103 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      padding: 18px;
-      margin-bottom: 14px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .card.compact {
+      padding: 10px 12px;
+      margin-bottom: 9px;
+    }
+
+    /* Tab Panels & Fixed Bottom Navigation Bar */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 40;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      box-shadow: 0 -4px 20px rgba(30, 35, 32, 0.06);
+    }
+
+    .bottom-nav-inner {
+      max-width: 820px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .nav-btn {
+      position: relative;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 12px;
+      padding: 6px 4px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      transition: all 0.15s ease;
+    }
+
+    .nav-btn .nav-ico {
+      font-size: 1.18rem;
+      line-height: 1.1;
+    }
+
+    .nav-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .nav-dot {
+      position: absolute;
+      top: 5px;
+      right: calc(50% - 22px);
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #bdb7ab;
+    }
+
+    .nav-dot.ok { background: var(--ok); }
+    .nav-dot.busy { background: var(--anchor); }
+    .nav-dot.err { background: var(--err); }
+
+    .settings-group-title {
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: var(--ink);
+      margin: 0 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .settings-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tips-box {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.65;
     }
 
     /* Controls Bar */
@@ -121,12 +210,12 @@
     .sub-controls {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px 14px;
+      gap: 6px 12px;
       align-items: center;
-      margin-top: 12px;
-      padding-top: 12px;
+      margin-top: 8px;
+      padding-top: 8px;
       border-top: 1px dashed var(--border);
-      font-size: 0.84rem;
+      font-size: 0.8rem;
       color: var(--muted);
     }
 
@@ -270,12 +359,15 @@
     svg#staffSvg {
       width: 100%;
       max-width: 640px;
+      max-height: 28vh;
       height: auto;
       display: block;
     }
 
     .staff-wrap.place-mode svg#staffSvg {
-      max-width: 520px;
+      width: auto;
+      max-width: 100%;
+      max-height: 36vh;
     }
 
     /* Mode B: 防误触微调与确认控制条 */
@@ -402,12 +494,12 @@
       border: 1px solid var(--border);
       background: #ffffff;
       border-radius: 12px;
-      padding: 12px 4px;
+      padding: 9px 4px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      gap: 1px;
       transition: all 0.12s ease;
       box-shadow: 0 2px 0 var(--border);
     }
@@ -464,12 +556,12 @@
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 8px;
-      padding: 9px 12px;
-      margin-bottom: 12px;
+      gap: 6px;
+      padding: 7px 10px;
+      margin-bottom: 8px;
       background: #f7f4ee;
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 11px;
     }
 
     .timer-readout {
@@ -880,185 +972,223 @@
 <body>
   <div class="app">
     <header>
-      <div>
-        <h1>五线谱识谱与锚点训练器</h1>
-        <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
-      </div>
-      <span class="badge-ver">v1.7 · 阶段一（双模式独立熟练度）</span>
+      <h1>五线谱识谱训练器</h1>
+      <span class="badge-ver">v1.8 · 三栏单屏版</span>
     </header>
 
-    <!-- 1. Controls: 练习模式、难度与功能选择 -->
-    <div class="card">
-      <div class="controls">
-        <div class="seg-group" id="modeGroup">
-          <button class="seg-btn active" data-mode="read">看谱认音</button>
-          <button class="seg-btn" data-mode="place">看音点谱</button>
-          <button class="seg-btn" data-mode="anchors">锚点特训</button>
+    <!-- ==================== TAB 1: 训练模块 ==================== -->
+    <section class="tab-panel active" id="panelPractice">
+      <!-- 练习模式、难度与开关 -->
+      <div class="card compact">
+        <div class="controls" style="gap:6px;">
+          <div class="seg-group" id="modeGroup">
+            <button class="seg-btn active" data-mode="read">看谱认音</button>
+            <button class="seg-btn" data-mode="place">看音点谱</button>
+            <button class="seg-btn" data-mode="anchors">锚点特训</button>
+          </div>
+
+          <div class="seg-group" id="clefGroup">
+            <button class="seg-btn active" data-clef="both">高低混合</button>
+            <button class="seg-btn" data-clef="treble">高音</button>
+            <button class="seg-btn" data-clef="bass">低音</button>
+          </div>
         </div>
 
-        <div class="seg-group" id="clefGroup">
-          <button class="seg-btn active" data-clef="both">高低混合</button>
-          <button class="seg-btn" data-clef="treble">高音谱号</button>
-          <button class="seg-btn" data-clef="bass">低音谱号</button>
-        </div>
-      </div>
+        <div class="sub-controls">
+          <label>
+            音域：
+            <select id="rangeSelect">
+              <option value="near_anchors">锚点周边（±2 步）</option>
+              <option value="core" selected>常用音域（C2–C6）</option>
+              <option value="extended">加线扩展（A1–E6）</option>
+              <option value="weak">🎯 重点训练（错+慢）</option>
+            </select>
+          </label>
 
-      <div class="sub-controls">
-        <label>
-          音域难度：
-          <select id="rangeSelect">
-            <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
-            <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
-            <option value="extended">加线扩展音域（A1–E6）</option>
-            <option value="weak">🎯 重点训练（错音 + 慢音）</option>
-          </select>
-        </label>
-
-        <label><input type="checkbox" id="toggleAnchors" checked /> 显示 7 锚点辅助线</label>
-        <label><input type="checkbox" id="toggleSound" checked /> 钢琴音高发声</label>
-        <label><input type="checkbox" id="toggleAutoNext" checked /> 答对自动下一题</label>
-      </div>
-    </div>
-
-    <!-- 2. Main Practice Card: 练习模块 -->
-    <div class="card">
-      <div class="timer-bar">
-        <div class="timer-readout" id="timerReadout">⏱ 未开始计时（停留不计入用时）</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
-          <button class="icon-btn" id="btnReplay">🔊 听音高</button>
-          <button class="icon-btn" id="btnSkip">换一题 ↻</button>
+          <label><input type="checkbox" id="toggleAnchors" checked /> 锚点线</label>
+          <label><input type="checkbox" id="toggleSound" checked /> 发声</label>
+          <label><input type="checkbox" id="toggleAutoNext" checked /> 自动下题</label>
         </div>
       </div>
 
-      <div class="prompt-bar">
-        <div class="prompt-main" id="promptMain">点击「开始计时」后显示题目</div>
-      </div>
+      <!-- 核心练习区 -->
+      <div class="card compact">
+        <div class="timer-bar">
+          <div class="timer-readout" id="timerReadout">⏱ 未开始计时</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            <button class="btn-timer" id="btnTimerToggle">▶ 开始计时</button>
+            <button class="icon-btn" id="btnReplay">🔊 听音</button>
+            <button class="icon-btn" id="btnSkip">↻ 换题</button>
+          </div>
+        </div>
 
-      <div class="staff-wrap" id="staffWrap">
-        <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
-        <div class="staff-overlay" id="staffOverlay">
-          <div class="overlay-title" id="overlayTitle">准备好了吗？</div>
-          <div class="overlay-sub" id="overlaySub">点击下方按钮才会显示音符并开始计时，停留在本页面不会计入平均反应时间。</div>
-          <button class="btn-overlay-start" id="btnOverlayStart">▶ 开始计时练习</button>
+        <div class="prompt-bar" style="margin-bottom:6px;">
+          <div class="prompt-main" id="promptMain" style="font-size:1.02rem;">点击「开始计时」后显示题目</div>
+        </div>
+
+        <div class="staff-wrap" id="staffWrap">
+          <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="staff-overlay" id="staffOverlay">
+            <div class="overlay-title" id="overlayTitle">准备好了吗？</div>
+            <div class="overlay-sub" id="overlaySub">点击下方按钮才显示音符并计时，停留页面不计入平均用时。</div>
+            <button class="btn-overlay-start" id="btnOverlayStart">▶ 开始计时练习</button>
+          </div>
+        </div>
+
+        <!-- Mode A / Anchors Answer Buttons -->
+        <div class="answer-grid" id="answerGrid" style="margin-top:10px;"></div>
+
+        <!-- Mode B Place Controls (防误触微调 + 确认) -->
+        <div class="place-controls" id="placeControls" style="margin-top:9px;">
+          <div class="place-btn-row">
+            <button class="btn-nudge" id="btnNudgeUp" disabled>▲ 上移</button>
+            <button class="btn-confirm-place" id="btnConfirmPlace" disabled>先在谱上点选位置</button>
+            <button class="btn-nudge" id="btnNudgeDown" disabled>▼ 下移</button>
+          </div>
+          <div class="place-opt-row">
+            <span id="placeHint">按住谱面上下拖动选位，可点左右微调再确认</span>
+            <label><input type="checkbox" id="toggleConfirmPlace" checked /> 防误触确认</label>
+          </div>
+        </div>
+
+        <div class="feedback" id="feedbackBar" style="margin-top:9px; min-height:42px; padding:8px 11px; font-size:0.84rem;">
+          <span id="feedbackText">提示：用 7 个对称锚点秒推，不要从中央 C 逐格数！</span>
+          <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: 练习记录模块 ==================== -->
+    <section class="tab-panel" id="panelRecords">
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-val" id="statStreak">0</div>
+          <div class="stat-lbl" id="statBestLbl">当前连胜（最高 0）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statAcc">--%</div>
+          <div class="stat-lbl">累计正确率</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statAvg">--s</div>
+          <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="statTotal">0 / 0</div>
+          <div class="stat-lbl">今日 / 累计题数</div>
         </div>
       </div>
 
-      <!-- Mode A / Anchors Answer Buttons -->
-      <div class="answer-grid" id="answerGrid"></div>
-
-      <!-- Mode B Place Controls (防误触微调 + 确认) -->
-      <div class="place-controls" id="placeControls">
-        <div class="place-btn-row">
-          <button class="btn-nudge" id="btnNudgeUp" disabled>▲ 上移一步</button>
-          <button class="btn-confirm-place" id="btnConfirmPlace" disabled>先在谱上点选位置</button>
-          <button class="btn-nudge" id="btnNudgeDown" disabled>▼ 下移一步</button>
+      <div class="card">
+        <div class="weak-panel">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="icon-btn active-tab" id="btnToggleReadMap" style="font-weight:700;">🎼 看谱认音熟练度 ▴</button>
+            <button class="icon-btn" id="btnTogglePlaceMap" style="font-weight:700;">🎯 看音点谱熟练度 ▾</button>
+          </div>
+          <span style="color:var(--muted); font-size:0.78rem;" id="proficiencyStdLbl">认音 ≤2s · 点谱 ≤5s</span>
         </div>
-        <div class="place-opt-row">
-          <span id="placeHint">在放大五线谱上按住上下拖动选位，可点左右微调后再确认</span>
-          <label><input type="checkbox" id="toggleConfirmPlace" checked /> 防误触（确认前可微调）</label>
+
+        <div class="analysis-drawer open" id="analysisDrawer"></div>
+
+        <div class="history-section">
+          <div class="history-header">
+            <strong style="color:var(--ink);">最近 7 天练习记录（跨设备自动合并汇总）</strong>
+            <span style="color:var(--muted); font-size:0.78rem;" id="deviceSummaryLbl">当前设备：本地</span>
+          </div>
+          <div class="history-list" id="historyList"></div>
         </div>
       </div>
+    </section>
 
-      <div class="feedback" id="feedbackBar">
-        <span id="feedbackText">提示：优先找最近的锚点（高音 C4/G4/C5/C6，低音 C2/C3/F3/C4），不要从中央 C 一格格数！</span>
-        <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
-      </div>
-    </div>
-
-    <!-- 3. Stats & Analysis: 统计记录、五线谱熟练度图与 7 天历史 -->
-    <div class="stats">
-      <div class="stat-box">
-        <div class="stat-val" id="statStreak">0</div>
-        <div class="stat-lbl" id="statBestLbl">当前连胜（最高 0）</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statAcc">--%</div>
-        <div class="stat-lbl">累计正确率</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statAvg">--s</div>
-        <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="statTotal">0 / 0</div>
-        <div class="stat-lbl">今日 / 累计题数</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="weak-panel">
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="icon-btn active-tab" id="btnToggleReadMap" style="font-weight:700;">🎼 看谱认音熟练度 ▴</button>
-          <button class="icon-btn" id="btnTogglePlaceMap" style="font-weight:700;">🎯 看音点谱熟练度 ▾</button>
-        </div>
-        <span style="color:var(--muted); font-size:0.78rem;" id="proficiencyStdLbl">认音 ≤2s · 点谱 ≤5s</span>
-      </div>
-
-      <div class="analysis-drawer open" id="analysisDrawer"></div>
-
-      <div class="history-section">
-        <div class="history-header">
-          <strong style="color:var(--ink);">最近 7 天练习记录（跨设备自动合并汇总）</strong>
-          <span style="color:var(--muted); font-size:0.78rem;" id="deviceSummaryLbl">当前设备：本地</span>
-        </div>
-        <div class="history-list" id="historyList"></div>
-      </div>
-    </div>
-
-    <!-- 4. Cloud Sync & Data Management Card: 数据管理与 GitHub 云同步 -->
-    <div class="card" style="padding:14px 16px;">
-      <div class="sync-bar">
-        <div class="sync-status">
-          <span class="sync-dot" id="syncDot"></span>
-          <span id="syncStatusText">未开启 GitHub 云同步（仅保存在本设备）</span>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <!-- ==================== TAB 3: 系统设置模块 ==================== -->
+    <section class="tab-panel" id="panelSettings">
+      <div class="card">
+        <h2 class="settings-group-title">
+          <span>☁️ GitHub 私有知识库云同步</span>
           <button class="icon-btn" id="btnSyncNow" style="display:none;">☁️ 立即同步</button>
-          <button class="icon-btn" id="btnToggleSyncConfig">⚙️ 云同步设置</button>
-          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
-          <button class="icon-btn" id="btnResetStats">重置统计</button>
+        </h2>
+        <div class="sync-bar" style="margin-bottom:6px;">
+          <div class="sync-status">
+            <span class="sync-dot" id="syncDot"></span>
+            <span id="syncStatusText">未开启 GitHub 云同步（仅保存在本设备）</span>
+          </div>
+          <button class="icon-btn" id="btnToggleSyncConfig">展开 / 收起配置</button>
+        </div>
+
+        <div class="sync-drawer open" id="syncDrawer">
+          <div style="color:var(--muted); font-size:0.8rem; line-height:1.5;">
+            使用仅限 <strong>knowledge-base</strong> 单仓库读写权限的 GitHub Token，将你的 iPhone 与 Mac 练习记录实时合并同步到私有知识库。令牌仅保存在本机浏览器中，绝不上传至公开页面。
+          </div>
+          <div class="field-grid">
+            <div class="field-item">
+              <label for="cfgOwner">GitHub 用户名</label>
+              <input id="cfgOwner" type="text" placeholder="xietao0078-netizen" />
+            </div>
+            <div class="field-item">
+              <label for="cfgRepo">私有知识库名</label>
+              <input id="cfgRepo" type="text" placeholder="knowledge-base" />
+            </div>
+            <div class="field-item">
+              <label for="cfgPath">同步文件路径</label>
+              <input id="cfgPath" type="text" placeholder="01-音乐通识/data-识谱记录.json" />
+            </div>
+            <div class="field-item">
+              <label for="cfgDeviceName">当前设备名称</label>
+              <input id="cfgDeviceName" type="text" placeholder="iPhone 或 Mac" />
+            </div>
+            <div class="field-item full">
+              <label for="cfgToken">GitHub Token（仅限本机保存）</label>
+              <input id="cfgToken" type="password" placeholder="粘贴 github_pat_ 或 ghp_ 开头的令牌..." autocomplete="off" />
+            </div>
+          </div>
+          <div class="sync-actions">
+            <button class="btn-primary-sm" id="btnSaveSync">保存并立即测试同步</button>
+            <button class="icon-btn" id="btnClearSync">清除本机令牌</button>
+          </div>
         </div>
       </div>
 
-      <div class="sync-drawer" id="syncDrawer">
-        <div style="color:var(--muted); font-size:0.8rem; line-height:1.5;">
-          使用仅限 <strong>knowledge-base</strong> 单仓库读写权限的 GitHub Token，将你的 iPhone 与 Mac 练习记录实时合并同步到私有知识库。令牌仅保存在本机浏览器中，绝不上传至公开页面。
+      <div class="card">
+        <h2 class="settings-group-title"><span>📋 数据导出与管理</span></h2>
+        <div class="settings-btn-row">
+          <button class="btn-primary-sm" id="btnCopyReport">📋 复制今日战报</button>
+          <button class="icon-btn" id="btnResetStats">重置本机统计</button>
         </div>
-        <div class="field-grid">
-          <div class="field-item">
-            <label for="cfgOwner">GitHub 用户名</label>
-            <input id="cfgOwner" type="text" placeholder="xietao0078-netizen" />
-          </div>
-          <div class="field-item">
-            <label for="cfgRepo">私有知识库名</label>
-            <input id="cfgRepo" type="text" placeholder="knowledge-base" />
-          </div>
-          <div class="field-item">
-            <label for="cfgPath">同步文件路径</label>
-            <input id="cfgPath" type="text" placeholder="01-音乐通识/data-识谱记录.json" />
-          </div>
-          <div class="field-item">
-            <label for="cfgDeviceName">当前设备名称</label>
-            <input id="cfgDeviceName" type="text" placeholder="iPhone 或 Mac" />
-          </div>
-          <div class="field-item full">
-            <label for="cfgToken">GitHub Fine-grained Token（仅限本机保存）</label>
-            <input id="cfgToken" type="password" placeholder="粘贴以 github_pat_ 开头的令牌..." autocomplete="off" />
-          </div>
-        </div>
-        <div class="sync-actions">
-          <button class="btn-primary-sm" id="btnSaveSync">保存并立即测试同步</button>
-          <button class="icon-btn" id="btnClearSync">清除本机令牌</button>
+        <div class="tips-box" style="margin-top:10px;">
+          点击「复制今日战报」可将当天题数、正确率、平均反应和双模式弱项音一键复制发给 AI 归档进知识库。
         </div>
       </div>
-    </div>
 
-    <div class="footer-tip">
-      电脑快捷键：按 <strong>C D E F G A B</strong> 或数字 <strong>1–7</strong>（对应 do–si）极速作答 · 按 <strong>空格 / 回车</strong> 切下一题<br />
-      后续可随时按你的学习进度升级：音程识别 · 升降号与五度圈调号 · 三和弦/七和弦块状识谱
-    </div>
+      <div class="card">
+        <h2 class="settings-group-title"><span>⌨️ 快捷键与升级路线</span></h2>
+        <div class="tips-box">
+          · <strong>看谱认音 / 锚点特训</strong>：键盘按 <strong>C D E F G A B</strong> 或数字 <strong>1–7</strong>（do–si）秒答<br />
+          · <strong>看音点谱</strong>：按 <strong>↑ / ↓</strong> 微调位置，按 <strong>空格 / 回车</strong> 确认落音<br />
+          · <strong>计时控制</strong>：按 <strong>P</strong> 键随时开始或暂停计时；切换页面/锁屏自动暂停<br />
+          · <strong>后续升级规划</strong>：音程识别 · 升降号与五度圈调号 · 三和弦/七和弦块状识谱
+        </div>
+      </div>
+    </section>
   </div>
+
+  <!-- 底部固定三栏导航栏 -->
+  <nav class="bottom-nav" aria-label="主导航">
+    <div class="bottom-nav-inner">
+      <button class="nav-btn active" data-tab="practice">
+        <span class="nav-ico">🎹</span>
+        <span>训练</span>
+      </button>
+      <button class="nav-btn" data-tab="records">
+        <span class="nav-ico">📊</span>
+        <span>练习记录</span>
+      </button>
+      <button class="nav-btn" data-tab="settings">
+        <span class="nav-ico">⚙️</span>
+        <span>系统设置</span>
+        <span class="nav-dot" id="navSyncDot"></span>
+      </button>
+    </div>
+  </nav>
 
   <script>
     /* ============================================================
@@ -1375,7 +1505,8 @@
       timerState: 'idle', // 'idle' | 'running' | 'paused'
       pauseReason: '',
       analysisView: 'staff', // 'staff' | 'list'
-      activeAnalysisMode: 'read' // 'read' | 'place' | null
+      activeAnalysisMode: 'read', // 'read' | 'place' | null
+      activeTab: 'practice' // 'practice' | 'records' | 'settings'
     };
 
     let autoNextTimer = null;
@@ -1552,11 +1683,12 @@
 
     function setSyncStatus(kind, msg) {
       const dot = document.getElementById('syncDot');
+      const navDot = document.getElementById('navSyncDot');
       const txt = document.getElementById('syncStatusText');
       const btn = document.getElementById('btnSyncNow');
-      if (!dot || !txt) return;
-      dot.className = 'sync-dot' + (kind ? ` ${kind}` : '');
-      txt.textContent = msg;
+      if (dot) dot.className = 'sync-dot' + (kind ? ` ${kind}` : '');
+      if (navDot) navDot.className = 'nav-dot' + (kind ? ` ${kind}` : '');
+      if (txt) txt.textContent = msg;
       if (btn) btn.style.display = syncCfg.token ? 'inline-block' : 'none';
     }
 
@@ -2947,8 +3079,36 @@
       }
     });
 
-    // 键盘快捷键
+    // 底部三栏主导航切换（切离训练页自动暂停计时）
+    function switchTab(tabName) {
+      if (state.activeTab === 'practice' && tabName !== 'practice' && state.timerState === 'running') {
+        pauseTimer('切离训练页已自动暂停');
+      }
+      state.activeTab = tabName;
+      document.querySelectorAll('.bottom-nav .nav-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+      });
+      document.getElementById('panelPractice').classList.toggle('active', tabName === 'practice');
+      document.getElementById('panelRecords').classList.toggle('active', tabName === 'records');
+      document.getElementById('panelSettings').classList.toggle('active', tabName === 'settings');
+
+      if (tabName === 'records') {
+        updateStats();
+        renderNoteAnalysisTable();
+        renderHistory();
+      } else if (tabName === 'settings') {
+        fillSyncForm();
+      }
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    document.querySelectorAll('.bottom-nav .nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // 键盘快捷键（仅在训练页生效）
     window.addEventListener('keydown', (e) => {
+      if (state.activeTab !== 'practice') return;
       if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
       const upper = e.key.toUpperCase();
       if (upper === 'P') {
