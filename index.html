@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="五线谱训练" />
+  <meta name="theme-color" content="#f7f4ee" />
+  <title>五线谱识谱与锚点训练器 · 个人音乐知识库</title>
+  <style>
+    :root {
+      --bg: #f7f4ee;
+      --card: #ffffff;
+      --ink: #1e2320;
+      --muted: #6e6a61;
+      --border: #e5dfd3;
+      --accent: #b85d3b;
+      --accent-soft: #f9ede7;
+      --anchor: #d97706;
+      --anchor-soft: #fef3c7;
+      --ok: #26734d;
+      --ok-soft: #e6f4ec;
+      --err: #c23b3b;
+      --err-soft: #fbeaea;
+      --shadow: 0 8px 28px rgba(30, 35, 32, 0.06);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      padding: 20px 14px 40px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    .app {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.86rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .badge-ver {
+      font-size: 0.76rem;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+
+    /* Controls Bar */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .seg-group {
+      display: inline-flex;
+      background: #f1ede4;
+      padding: 3px;
+      border-radius: 11px;
+      gap: 2px;
+    }
+
+    .seg-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 7px 12px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .seg-btn.active {
+      background: var(--card);
+      color: var(--ink);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .sub-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--border);
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .sub-controls label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    select {
+      font: inherit;
+      color: var(--ink);
+      background: #f7f4ee;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+
+    /* Stats Strip */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+
+    .stat-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-lbl {
+      font-size: 0.74rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Prompt Area */
+    .prompt-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .prompt-main {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .target-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+
+    .clef-tag {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: #f1ede4;
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+
+    .icon-btn {
+      border: 1px solid var(--border);
+      background: #faf8f4;
+      color: var(--ink);
+      border-radius: 9px;
+      padding: 6px 11px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .icon-btn:hover { background: #f0ebe0; }
+
+    /* Staff Canvas */
+    .staff-wrap {
+      position: relative;
+      background: #fffdf9;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 6px 0;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .staff-wrap.interactive {
+      cursor: crosshair;
+    }
+
+    svg#staffSvg {
+      width: 100%;
+      max-width: 640px;
+      height: auto;
+      display: block;
+    }
+
+    /* Feedback Banner */
+    .feedback {
+      min-height: 48px;
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 11px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #f7f4ee;
+      color: var(--muted);
+      transition: all 0.15s ease;
+    }
+
+    .feedback.ok {
+      background: var(--ok-soft);
+      color: var(--ok);
+      font-weight: 600;
+    }
+
+    .feedback.err {
+      background: var(--err-soft);
+      color: var(--err);
+      font-weight: 600;
+    }
+
+    .next-btn {
+      border: none;
+      background: var(--ink);
+      color: #fff;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .next-btn:hover { opacity: 0.88; }
+
+    /* Answer Buttons (Mode A / Flash) */
+    .answer-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .ans-btn {
+      border: 1px solid var(--border);
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 12px 4px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.12s ease;
+      box-shadow: 0 2px 0 var(--border);
+    }
+
+    .ans-btn:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .ans-btn:active {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    .ans-btn .letter {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .ans-btn .solfege {
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .ans-btn .kbd {
+      font-size: 0.68rem;
+      color: #a39e93;
+      margin-top: 2px;
+    }
+
+    .ans-btn.correct {
+      background: var(--ok-soft);
+      border-color: var(--ok);
+      box-shadow: 0 2px 0 var(--ok);
+    }
+
+    .ans-btn.wrong {
+      background: var(--err-soft);
+      border-color: var(--err);
+      box-shadow: 0 2px 0 var(--err);
+    }
+
+    /* Mode B Hint */
+    .place-hint {
+      margin-top: 12px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* Weak Notes Panel */
+    .weak-panel {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.84rem;
+    }
+
+    .weak-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chip {
+      background: var(--err-soft);
+      color: var(--err);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .chip.empty {
+      background: var(--ok-soft);
+      color: var(--ok);
+    }
+
+    .footer-tip {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    @media (max-width: 600px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .answer-grid { grid-template-columns: repeat(4, 1fr); }
+      .ans-btn .kbd { display: none; }
+      h1 { font-size: 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>五线谱识谱与锚点训练器</h1>
+        <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
+      </div>
+      <span class="badge-ver">v1.0 · 阶段一（自然音与锚点）</span>
+    </header>
+
+    <!-- Controls -->
+    <div class="card">
+      <div class="controls">
+        <div class="seg-group" id="modeGroup">
+          <button class="seg-btn active" data-mode="read">看谱 → 选音名</button>
+          <button class="seg-btn" data-mode="place">看音名 → 点五线谱</button>
+          <button class="seg-btn" data-mode="anchors">7 锚点闪电战</button>
+        </div>
+
+        <div class="seg-group" id="clefGroup">
+          <button class="seg-btn active" data-clef="both">高低混合</button>
+          <button class="seg-btn" data-clef="treble">高音谱号</button>
+          <button class="seg-btn" data-clef="bass">低音谱号</button>
+        </div>
+      </div>
+
+      <div class="sub-controls">
+        <label>
+          音域难度：
+          <select id="rangeSelect">
+            <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
+            <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
+            <option value="extended">加线扩展音域（A1–E6）</option>
+            <option value="weak">专攻高频错音</option>
+          </select>
+        </label>
+
+        <label><input type="checkbox" id="toggleAnchors" checked /> 显示 7 锚点辅助线</label>
+        <label><input type="checkbox" id="toggleSound" checked /> 钢琴音高发声</label>
+        <label><input type="checkbox" id="toggleAutoNext" checked /> 答对自动下一题</label>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-val" id="statStreak">0</div>
+        <div class="stat-lbl">当前连胜</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statAcc">--%</div>
+        <div class="stat-lbl">本轮正确率</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statAvg">--s</div>
+        <div class="stat-lbl">平均反应（目标 &lt;1.0s）</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="statTotal">0</div>
+        <div class="stat-lbl">已完成题数</div>
+      </div>
+    </div>
+
+    <!-- Main Practice Card -->
+    <div class="card">
+      <div class="prompt-bar">
+        <div class="prompt-main" id="promptMain">请识别五线谱上的音符</div>
+        <div style="display:flex; gap:8px;">
+          <button class="icon-btn" id="btnReplay">🔊 听音高</button>
+          <button class="icon-btn" id="btnSkip">换一题 ↻</button>
+        </div>
+      </div>
+
+      <div class="staff-wrap" id="staffWrap">
+        <svg id="staffSvg" viewBox="0 0 600 250" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+
+      <!-- Mode A / Anchors Answer Buttons -->
+      <div class="answer-grid" id="answerGrid"></div>
+
+      <!-- Mode B Place Hint -->
+      <div class="place-hint" id="placeHint" style="display:none;">
+        在上方五线谱中移动鼠标（或轻触）定位线与间，点击即可放音判定
+      </div>
+
+      <div class="feedback" id="feedbackBar">
+        <span id="feedbackText">提示：优先找最近的锚点（高音 C4/G4/C5/C6，低音 C2/C3/F3/C4），不要从中央 C 一格格数！</span>
+        <button class="next-btn" id="btnNext" style="display:none;">下一题 →</button>
+      </div>
+    </div>
+
+    <!-- Weak Notes Tracking -->
+    <div class="card">
+      <div class="weak-panel">
+        <div class="weak-chips" id="weakChips">
+          <strong style="color:var(--ink);">易错音记录：</strong>
+          <span class="chip empty">暂无错音，继续保持！</span>
+        </div>
+        <button class="icon-btn" id="btnResetStats">重置统计</button>
+      </div>
+    </div>
+
+    <div class="footer-tip">
+      电脑快捷键：按 <strong>C D E F G A B</strong> 或数字 <strong>1–7</strong>（对应 do–si）极速作答 · 按 <strong>空格 / 回车</strong> 切下一题<br />
+      后续可随时按你的学习进度升级：音程识别 · 升降号与五度圈调号 · 三和弦/七和弦块状识谱
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================
+       1. 音乐理论与坐标引擎（扩展友好架构）
+       diatonicIndex d: 以中央 C (C4) = 0 为原点，每步 = 1 个自然音级（半个间）
+       所有五线谱的「线」（含上下加线）在高音与低音谱号下全部满足 d % 2 === 0！
+    ============================================================ */
+    const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    const SOLFEGE = ['do', 're', 'mi', 'fa', 'sol', 'la', 'si'];
+    const SEMITONES = [0, 2, 4, 5, 7, 9, 11];
+
+    const STEP_PX = 9;          // 相邻线-间垂直距离（线间距 = 18px）
+    const STAFF_TOP = 84;       // 第 5 线（最上面那条线）的 Y 坐标
+    const STAFF_LEFT = 54;
+    const STAFF_RIGHT = 556;
+    const NOTE_X = 330;
+
+    // 两大谱号的标准参数与绝对锚点
+    const CLEF_META = {
+      treble: {
+        name: '高音谱号',
+        topLineD: 10,     // Line 5 = F5 (d=10)
+        bottomLineD: 2,   // Line 1 = E4 (d=2)
+        midLineD: 6,      // Line 3 = B4 (d=6)
+        anchors: [
+          { d: 0,  pos: '下加一线' },
+          { d: 4,  pos: '第二线（G谱号中心）' },
+          { d: 7,  pos: '第三间' },
+          { d: 14, pos: '上加二线' }
+        ],
+        ranges: {
+          near_anchors: [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15],
+          core: rangeArr(0, 14),      // C4 ~ C6
+          extended: rangeArr(-2, 16)  // A3 ~ E6
+        }
+      },
+      bass: {
+        name: '低音谱号',
+        topLineD: -2,     // Line 5 = A3 (d=-2)
+        bottomLineD: -10, // Line 1 = G2 (d=-10)
+        midLineD: -6,     // Line 3 = D3 (d=-6)
+        anchors: [
+          { d: -14, pos: '下加二线' },
+          { d: -7,  pos: '第二间' },
+          { d: -4,  pos: '第四线（F谱号两点夹线）' },
+          { d: 0,   pos: '上加一线' }
+        ],
+        ranges: {
+          near_anchors: [-15, -14, -13, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1],
+          core: rangeArr(-14, 0),     // C2 ~ C4
+          extended: rangeArr(-16, 2)  // A1 ~ E4
+        }
+      }
+    };
+
+    function rangeArr(a, b) {
+      const out = [];
+      for (let i = a; i <= b; i++) out.push(i);
+      return out;
+    }
+
+    function dToInfo(d) {
+      const idx = ((d % 7) + 7) % 7;
+      const octave = 4 + Math.floor(d / 7);
+      const letter = LETTERS[idx];
+      const solfege = SOLFEGE[idx];
+      const midi = (octave + 1) * 12 + SEMITONES[idx];
+      const freq = 440 * Math.pow(2, (midi - 69) / 12);
+      return { d, idx, octave, letter, solfege, name: `${letter}${octave}`, midi, freq };
+    }
+
+    function dToY(clef, d) {
+      return STAFF_TOP + (CLEF_META[clef].topLineD - d) * STEP_PX;
+    }
+
+    function yToD(clef, y) {
+      const raw = CLEF_META[clef].topLineD - (y - STAFF_TOP) / STEP_PX;
+      const clamped = Math.round(raw);
+      const minD = clef === 'treble' ? -3 : -17;
+      const maxD = clef === 'treble' ? 17 : 3;
+      return Math.max(minD, Math.min(maxD, clamped));
+    }
+
+    function getAnchorHint(clef, d) {
+      const anchors = CLEF_META[clef].anchors;
+      let best = anchors[0];
+      let bestDist = Math.abs(d - best.d);
+      for (const a of anchors) {
+        const dist = Math.abs(d - a.d);
+        if (dist < bestDist) { best = a; bestDist = dist; }
+      }
+      const aInfo = dToInfo(best.d);
+      if (bestDist === 0) {
+        return `这正是绝对锚点音：${CLEF_META[clef].name}${best.pos} ${aInfo.name}（${aInfo.solfege}）`;
+      }
+      const dir = d > best.d ? '上' : '下';
+      return `锚点法：离「${best.pos} ${aInfo.name}」向${dir} ${bestDist} 步`;
+    }
+
+    function getStaffPositionLabel(clef, d) {
+      const meta = CLEF_META[clef];
+      if (d >= meta.bottomLineD && d <= meta.topLineD) {
+        const rel = d - meta.bottomLineD; // 0..8
+        if (rel % 2 === 0) return `第 ${rel / 2 + 1} 线`;
+        return `第 ${(rel + 1) / 2} 间`;
+      }
+      if (d > meta.topLineD) {
+        const diff = d - meta.topLineD;
+        if (diff === 1) return '上加一间（第5线上方）';
+        if (diff % 2 === 0) return `上加 ${diff / 2} 线`;
+        return `上加 ${(diff + 1) / 2} 间`;
+      }
+      const diff = meta.bottomLineD - d;
+      if (diff === 1) return '下加一间（第1线下方）';
+      if (diff % 2 === 0) return `下加 ${diff / 2} 线`;
+      return `下加 ${(diff + 1) / 2} 间`;
+    }
+
+    /* ============================================================
+       2. Web Audio 柔和钢琴音色合成器（零外部音频依赖）
+    ============================================================ */
+    let audioCtx = null;
+    function playPianoNote(freq) {
+      if (!state.sound) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const master = audioCtx.createGain();
+        master.gain.setValueAtTime(0.001, now);
+        master.gain.linearRampToValueAtTime(0.28, now + 0.015);
+        master.gain.exponentialRampToValueAtTime(0.08, now + 0.35);
+        master.gain.exponentialRampToValueAtTime(0.0008, now + 1.15);
+        master.connect(audioCtx.destination);
+
+        // 叠合基频与轻微泛音，模拟温暖电钢音色
+        [
+          { mult: 1, type: 'triangle', gain: 0.75 },
+          { mult: 2, type: 'sine',     gain: 0.22 },
+          { mult: 3, type: 'sine',     gain: 0.07 }
+        ].forEach(h => {
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          osc.type = h.type;
+          osc.frequency.setValueAtTime(freq * h.mult, now);
+          g.gain.setValueAtTime(h.gain, now);
+          osc.connect(g);
+          g.connect(master);
+          osc.start(now);
+          osc.stop(now + 1.2);
+        });
+      } catch (e) {}
+    }
+
+    function playErrorTone() {
+      if (!state.sound) return;
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(165, now);
+        osc.frequency.linearRampToValueAtTime(135, now + 0.16);
+        g.gain.setValueAtTime(0.08, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      } catch (e) {}
+    }
+
+    /* ============================================================
+       3. 应用状态与持久化（localStorage）
+    ============================================================ */
+    const STORAGE_KEY = 'kb_sightreading_v1';
+    const saved = (() => {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+      catch { return {}; }
+    })();
+
+    const state = {
+      mode: 'read',        // 'read' | 'place' | 'anchors'
+      clefFilter: 'both',  // 'both' | 'treble' | 'bass'
+      range: 'core',       // 'near_anchors' | 'core' | 'extended' | 'weak'
+      showAnchors: true,
+      sound: true,
+      autoNext: true,
+
+      current: null,       // { clef, d, startTime, answered }
+      hoverD: null,
+      placedResult: null,  // { clickedD, isCorrect }
+
+      streak: 0,
+      total: 0,
+      correctCount: 0,
+      totalTimeMs: 0,
+      weakMap: saved.weakMap || {} // key: `${clef}:${d}` -> miss count
+    };
+
+    let autoNextTimer = null;
+
+    function persist() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ weakMap: state.weakMap }));
+      } catch {}
+    }
+
+    /* ============================================================
+       4. SVG 五线谱与谱号渲染器（精确对齐每条线与加线）
+    ============================================================ */
+    const svg = document.getElementById('staffSvg');
+
+    function svgEl(tag, attrs = {}) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      return el;
+    }
+
+    function drawTrebleClef(g) {
+      // 精准几何高音谱号：中心卷曲严格包住第 2 线 G4 (y = STAFF_TOP + 54 = 138)
+      const gLineY = dToY('treble', 4); // 138
+      const cx = 102;
+      const path = svgEl('path', {
+        d: `M ${cx + 2} ${gLineY + 11}
+            C ${cx - 10} ${gLineY + 9}, ${cx - 11} ${gLineY - 7}, ${cx + 2} ${gLineY - 9}
+            C ${cx + 15} ${gLineY - 10}, ${cx + 18} ${gLineY + 7}, ${cx + 4} ${gLineY + 17}
+            C ${cx - 13} ${gLineY + 25}, ${cx - 20} ${gLineY + 2}, ${cx - 9} ${gLineY - 19}
+            C ${cx + 1} ${gLineY - 37}, ${cx + 13} ${gLineY - 56}, ${cx + 8} ${gLineY - 72}
+            C ${cx + 5} ${gLineY - 82}, ${cx - 4} ${gLineY - 76}, ${cx - 3} ${gLineY - 60}
+            L ${cx + 5} ${gLineY + 34}
+            C ${cx + 6} ${gLineY + 46}, ${cx - 7} ${gLineY + 48}, ${cx - 9} ${gLineY + 40}
+            C ${cx - 10} ${gLineY + 35}, ${cx - 3} ${gLineY + 33}, ${cx - 3} ${gLineY + 38}`,
+        fill: 'none',
+        stroke: '#1e2320',
+        'stroke-width': 3.1,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      });
+      g.appendChild(path);
+      // G4 锚点指示小点（开启锚点时亮琥珀色）
+      if (state.showAnchors) {
+        g.appendChild(svgEl('circle', { cx: cx + 2, cy: gLineY, r: 3.3, fill: '#d97706' }));
+      }
+    }
+
+    function drawBassClef(g) {
+      // 精准几何低音谱号：起点圆点精确落在第 4 线 F3 (y = STAFF_TOP + 18 = 102)，右侧两点夹住第 4 线
+      const fLineY = dToY('bass', -4); // 102
+      const cx = 92;
+      g.appendChild(svgEl('circle', { cx, cy: fLineY, r: 5.2, fill: '#1e2320' }));
+      g.appendChild(svgEl('path', {
+        d: `M ${cx} ${fLineY}
+            C ${cx - 1} ${fLineY - 16}, ${cx + 22} ${fLineY - 18}, ${cx + 26} ${fLineY - 2}
+            C ${cx + 30} ${fLineY + 16}, ${cx + 12} ${fLineY + 34}, ${cx - 5} ${fLineY + 44}`,
+        fill: 'none',
+        stroke: '#1e2320',
+        'stroke-width': 3.8,
+        'stroke-linecap': 'round'
+      }));
+      // 两点严格落在第 4 间与第 3 间，夹住第 4 线 F3
+      const dotColor = state.showAnchors ? '#d97706' : '#1e2320';
+      g.appendChild(svgEl('circle', { cx: cx + 37, cy: fLineY - STEP_PX, r: 3.4, fill: dotColor }));
+      g.appendChild(svgEl('circle', { cx: cx + 37, cy: fLineY + STEP_PX, r: 3.4, fill: dotColor }));
+    }
+
+    function drawLedgerLines(g, clef, d, x, color = '#1e2320', opacity = 1) {
+      const meta = CLEF_META[clef];
+      const halfW = 19;
+      if (d >= meta.topLineD + 2) {
+        for (let k = meta.topLineD + 2; k <= d; k += 2) {
+          const y = dToY(clef, k);
+          g.appendChild(svgEl('line', {
+            x1: x - halfW, y1: y, x2: x + halfW, y2: y,
+            stroke: color, 'stroke-width': 1.7, opacity
+          }));
+        }
+      } else if (d <= meta.bottomLineD - 2) {
+        for (let k = meta.bottomLineD - 2; k >= d; k -= 2) {
+          const y = dToY(clef, k);
+          g.appendChild(svgEl('line', {
+            x1: x - halfW, y1: y, x2: x + halfW, y2: y,
+            stroke: color, 'stroke-width': 1.7, opacity
+          }));
+        }
+      }
+    }
+
+    function drawNote(g, clef, d, x, opts = {}) {
+      const { color = '#1e2320', opacity = 1, label = '', dashed = false } = opts;
+      const y = dToY(clef, d);
+      drawLedgerLines(g, clef, d, x, color, opacity);
+
+      // 椭圆形符头（倾斜 -18 度）
+      g.appendChild(svgEl('ellipse', {
+        cx: x, cy: y, rx: 10.5, ry: 7.4,
+        transform: `rotate(-18 ${x} ${y})`,
+        fill: dashed ? 'none' : color,
+        stroke: color,
+        'stroke-width': dashed ? 2 : 1,
+        'stroke-dasharray': dashed ? '3 2' : 'none',
+        opacity
+      }));
+
+      // 符干方向：在第三线及以上朝下，以下朝上
+      const stemDown = d >= CLEF_META[clef].midLineD;
+      const stemX = stemDown ? x - 9.4 : x + 9.4;
+      const stemY2 = stemDown ? y + 48 : y - 48;
+      g.appendChild(svgEl('line', {
+        x1: stemX, y1: y, x2: stemX, y2: stemY2,
+        stroke: color, 'stroke-width': 2.1, opacity
+      }));
+
+      if (label) {
+        const txt = svgEl('text', {
+          x: x + 22, y: y + 5,
+          fill: color,
+          'font-size': 14,
+          'font-weight': 700,
+          opacity
+        });
+        txt.textContent = label;
+        g.appendChild(txt);
+      }
+    }
+
+    function renderStaff() {
+      if (!state.current) return;
+      const { clef, d } = state.current;
+      svg.innerHTML = '';
+
+      // 1. 画五条标准线
+      for (let i = 0; i < 5; i++) {
+        const y = STAFF_TOP + i * STEP_PX * 2;
+        svg.appendChild(svgEl('line', {
+          x1: STAFF_LEFT, y1: y, x2: STAFF_RIGHT, y2: y,
+          stroke: '#3a3732', 'stroke-width': 1.4
+        }));
+      }
+      // 左侧起始竖线与右侧结束双小节线
+      svg.appendChild(svgEl('line', {
+        x1: STAFF_LEFT, y1: STAFF_TOP, x2: STAFF_LEFT, y2: STAFF_TOP + 8 * STEP_PX,
+        stroke: '#3a3732', 'stroke-width': 2
+      }));
+      svg.appendChild(svgEl('line', {
+        x1: STAFF_RIGHT - 6, y1: STAFF_TOP, x2: STAFF_RIGHT - 6, y2: STAFF_TOP + 8 * STEP_PX,
+        stroke: '#3a3732', 'stroke-width': 1.5
+      }));
+      svg.appendChild(svgEl('line', {
+        x1: STAFF_RIGHT, y1: STAFF_TOP, x2: STAFF_RIGHT, y2: STAFF_TOP + 8 * STEP_PX,
+        stroke: '#3a3732', 'stroke-width': 4
+      }));
+
+      // 2. 画谱号
+      const clefG = svgEl('g');
+      if (clef === 'treble') drawTrebleClef(clefG);
+      else drawBassClef(clefG);
+      svg.appendChild(clefG);
+
+      // 3. 可选：7 个绝对锚点参考标记（柔和琥珀虚线 + 左侧标牌）
+      if (state.showAnchors) {
+        const anchorG = svgEl('g');
+        for (const a of CLEF_META[clef].anchors) {
+          const ay = dToY(clef, a.d);
+          const aInfo = dToInfo(a.d);
+          anchorG.appendChild(svgEl('line', {
+            x1: 158, y1: ay, x2: STAFF_RIGHT - 18, y2: ay,
+            stroke: '#d97706', 'stroke-width': 1.1, 'stroke-dasharray': '4 5', opacity: 0.42
+          }));
+          const pill = svgEl('rect', {
+            x: 152, y: ay - 8, width: 28, height: 16, rx: 4,
+            fill: '#fef3c7', stroke: '#f59e0b', 'stroke-width': 0.8
+          });
+          anchorG.appendChild(pill);
+          const t = svgEl('text', {
+            x: 166, y: ay + 4, 'text-anchor': 'middle',
+            fill: '#b45309', 'font-size': 10.5, 'font-weight': 700
+          });
+          t.textContent = aInfo.name;
+          anchorG.appendChild(t);
+        }
+        svg.appendChild(anchorG);
+      }
+
+      // 4. 画音符（按模式区分）
+      const noteG = svgEl('g');
+      if (state.mode === 'read' || state.mode === 'anchors') {
+        const color = state.current.answered
+          ? (state.current.wasCorrect ? '#26734d' : '#c23b3b')
+          : '#1e2320';
+        const label = state.current.answered ? `${dToInfo(d).name} (${dToInfo(d).solfege})` : '';
+        drawNote(noteG, clef, d, NOTE_X, { color, label });
+      } else {
+        // Mode B: 看音名点五线谱
+        if (!state.current.answered && state.hoverD !== null) {
+          drawNote(noteG, clef, state.hoverD, NOTE_X, { color: '#b85d3b', opacity: 0.45 });
+        }
+        if (state.placedResult) {
+          const { clickedD, isCorrect } = state.placedResult;
+          if (isCorrect) {
+            drawNote(noteG, clef, d, NOTE_X, { color: '#26734d', label: `✓ ${dToInfo(d).name}` });
+          } else {
+            drawNote(noteG, clef, clickedD, NOTE_X - 42, {
+              color: '#c23b3b',
+              label: `你点了 ${dToInfo(clickedD).name}`
+            });
+            drawNote(noteG, clef, d, NOTE_X + 74, {
+              color: '#26734d',
+              label: `正确: ${dToInfo(d).name}`
+            });
+          }
+        }
+      }
+      svg.appendChild(noteG);
+    }
+
+    /* ============================================================
+       5. 出题与判定逻辑
+    ============================================================ */
+    function buildPool() {
+      const clefs = state.clefFilter === 'both' ? ['treble', 'bass'] : [state.clefFilter];
+      const pool = [];
+
+      if (state.mode === 'anchors') {
+        for (const c of clefs) {
+          for (const a of CLEF_META[c].anchors) pool.push({ clef: c, d: a.d });
+        }
+        return pool;
+      }
+
+      if (state.range === 'weak') {
+        for (const [k, cnt] of Object.entries(state.weakMap)) {
+          if (cnt > 0) {
+            const [c, ds] = k.split(':');
+            if (clefs.includes(c)) {
+              for (let i = 0; i < Math.min(cnt, 5); i++) pool.push({ clef: c, d: Number(ds) });
+            }
+          }
+        }
+        if (pool.length > 0) return pool;
+      }
+
+      const rangeKey = state.range === 'weak' ? 'core' : state.range;
+      for (const c of clefs) {
+        for (const d of CLEF_META[c].ranges[rangeKey]) {
+          pool.push({ clef: c, d });
+        }
+      }
+      return pool;
+    }
+
+    function nextQuestion() {
+      clearTimeout(autoNextTimer);
+      const pool = buildPool();
+      let pick = pool[Math.floor(Math.random() * pool.length)];
+      // 尽量避免连续两题完全相同
+      if (state.current && pool.length > 1) {
+        for (let tries = 0; tries < 6; tries++) {
+          if (pick.clef !== state.current.clef || pick.d !== state.current.d) break;
+          pick = pool[Math.floor(Math.random() * pool.length)];
+        }
+      }
+
+      state.current = {
+        clef: pick.clef,
+        d: pick.d,
+        startTime: performance.now(),
+        answered: false,
+        wasCorrect: false
+      };
+      state.hoverD = null;
+      state.placedResult = null;
+
+      updateUIForQuestion();
+      renderStaff();
+    }
+
+    function updateUIForQuestion() {
+      const { clef, d } = state.current;
+      const info = dToInfo(d);
+      const promptEl = document.getElementById('promptMain');
+      const ansGrid = document.getElementById('answerGrid');
+      const placeHint = document.getElementById('placeHint');
+      const staffWrap = document.getElementById('staffWrap');
+      const fb = document.getElementById('feedbackBar');
+      const fbTxt = document.getElementById('feedbackText');
+      const btnNext = document.getElementById('btnNext');
+
+      fb.className = 'feedback';
+      btnNext.style.display = 'none';
+
+      // 重置按钮样式
+      document.querySelectorAll('.ans-btn').forEach(b => {
+        b.classList.remove('correct', 'wrong');
+        b.disabled = false;
+      });
+
+      if (state.mode === 'place') {
+        promptEl.innerHTML = `请在五线谱上点出：<span class="target-pill">${info.name}（${info.solfege}）</span><span class="clef-tag">${CLEF_META[clef].name}</span>`;
+        ansGrid.style.display = 'none';
+        placeHint.style.display = 'block';
+        staffWrap.classList.add('interactive');
+        fbTxt.textContent = `小提示：先在脑子里定位 ${CLEF_META[clef].name} 最近的锚点，再直接点出线或间。`;
+      } else {
+        const modeTitle = state.mode === 'anchors' ? '⚡ 锚点闪电战：秒出这个音！' : '请识别这个音符：';
+        promptEl.innerHTML = `${modeTitle} <span class="clef-tag">${CLEF_META[clef].name}</span>`;
+        ansGrid.style.display = 'grid';
+        placeHint.style.display = 'none';
+        staffWrap.classList.remove('interactive');
+        fbTxt.textContent = '快捷键：键盘按 C–B 或 1–7 即可秒答。';
+      }
+    }
+
+    function recordResult(isCorrect, detailText) {
+      const { clef, d, startTime } = state.current;
+      const elapsedMs = performance.now() - startTime;
+      const secStr = (elapsedMs / 1000).toFixed(2);
+      const key = `${clef}:${d}`;
+
+      state.current.answered = true;
+      state.current.wasCorrect = isCorrect;
+      state.total += 1;
+      state.totalTimeMs += elapsedMs;
+
+      if (isCorrect) {
+        state.correctCount += 1;
+        state.streak += 1;
+        // 答对则减轻该音错题权重
+        if (state.weakMap[key]) {
+          state.weakMap[key] = Math.max(0, state.weakMap[key] - 1);
+          if (state.weakMap[key] === 0) delete state.weakMap[key];
+        }
+        playPianoNote(dToInfo(d).freq);
+      } else {
+        state.streak = 0;
+        state.weakMap[key] = (state.weakMap[key] || 0) + 1;
+        playErrorTone();
+      }
+
+      persist();
+      updateStats();
+      renderWeakChips();
+      renderStaff();
+
+      const fb = document.getElementById('feedbackBar');
+      const fbTxt = document.getElementById('feedbackText');
+      const btnNext = document.getElementById('btnNext');
+
+      fb.className = `feedback ${isCorrect ? 'ok' : 'err'}`;
+      fbTxt.textContent = `${isCorrect ? '✓ 正确' : '✗ 再校准'}（${secStr}s）· ${detailText}`;
+      btnNext.style.display = 'inline-block';
+
+      if (isCorrect && state.autoNext) {
+        autoNextTimer = setTimeout(nextQuestion, 820);
+      }
+    }
+
+    function submitReadAnswer(letterIdx) {
+      if (!state.current || state.current.answered) return;
+      const info = dToInfo(state.current.d);
+      const isCorrect = letterIdx === info.idx;
+
+      const btns = document.querySelectorAll('.ans-btn');
+      btns[info.idx].classList.add('correct');
+      if (!isCorrect) btns[letterIdx].classList.add('wrong');
+
+      const posLabel = getStaffPositionLabel(state.current.clef, state.current.d);
+      const anchorTip = getAnchorHint(state.current.clef, state.current.d);
+      recordResult(isCorrect, `${info.name}（${info.solfege} · ${posLabel}）— ${anchorTip}`);
+    }
+
+    function submitPlaceAnswer(clickedD) {
+      if (!state.current || state.current.answered) return;
+      const isCorrect = clickedD === state.current.d;
+      state.placedResult = { clickedD, isCorrect };
+      const targetInfo = dToInfo(state.current.d);
+      const anchorTip = getAnchorHint(state.current.clef, state.current.d);
+      const posLabel = getStaffPositionLabel(state.current.clef, state.current.d);
+      recordResult(isCorrect, `${targetInfo.name} 在${posLabel} — ${anchorTip}`);
+    }
+
+    /* ============================================================
+       6. 统计与易错音展示
+    ============================================================ */
+    function updateStats() {
+      document.getElementById('statStreak').textContent = state.streak;
+      document.getElementById('statTotal').textContent = state.total;
+      const acc = state.total ? Math.round((state.correctCount / state.total) * 100) + '%' : '--%';
+      document.getElementById('statAcc').textContent = acc;
+      const avg = state.total ? (state.totalTimeMs / state.total / 1000).toFixed(2) + 's' : '--s';
+      document.getElementById('statAvg').textContent = avg;
+    }
+
+    function renderWeakChips() {
+      const wrap = document.getElementById('weakChips');
+      const entries = Object.entries(state.weakMap)
+        .filter(([, cnt]) => cnt > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+
+      wrap.innerHTML = '<strong style="color:var(--ink);">易错音记录：</strong>';
+      if (!entries.length) {
+        const s = document.createElement('span');
+        s.className = 'chip empty';
+        s.textContent = '暂无错音，状态很稳！';
+        wrap.appendChild(s);
+        return;
+      }
+      for (const [k, cnt] of entries) {
+        const [clef, dStr] = k.split(':');
+        const info = dToInfo(Number(dStr));
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} (${cnt}次)`;
+        wrap.appendChild(chip);
+      }
+    }
+
+    /* ============================================================
+       7. 事件绑定与初始化
+    ============================================================ */
+    function initAnswerButtons() {
+      const grid = document.getElementById('answerGrid');
+      grid.innerHTML = '';
+      LETTERS.forEach((letter, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'ans-btn';
+        btn.innerHTML = `
+          <span class="letter">${letter}</span>
+          <span class="solfege">${SOLFEGE[idx]}</span>
+          <span class="kbd">${letter} / ${idx + 1}</span>
+        `;
+        btn.addEventListener('click', () => submitReadAnswer(idx));
+        grid.appendChild(btn);
+      });
+    }
+
+    // 交互式五线谱坐标换算（Mode B）
+    function clientYToSvgY(clientY) {
+      const rect = svg.getBoundingClientRect();
+      return ((clientY - rect.top) / rect.height) * 250;
+    }
+
+    svg.addEventListener('pointermove', (e) => {
+      if (state.mode !== 'place' || !state.current || state.current.answered) return;
+      const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
+      if (d !== state.hoverD) {
+        state.hoverD = d;
+        renderStaff();
+      }
+    });
+
+    svg.addEventListener('pointerleave', () => {
+      if (state.hoverD !== null) {
+        state.hoverD = null;
+        renderStaff();
+      }
+    });
+
+    svg.addEventListener('click', (e) => {
+      if (state.mode !== 'place' || !state.current || state.current.answered) return;
+      const d = yToD(state.current.clef, clientYToSvgY(e.clientY));
+      submitPlaceAnswer(d);
+    });
+
+    // 模式切换
+    document.querySelectorAll('#modeGroup .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#modeGroup .seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.mode = btn.dataset.mode;
+        nextQuestion();
+      });
+    });
+
+    // 谱号切换
+    document.querySelectorAll('#clefGroup .seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#clefGroup .seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.clefFilter = btn.dataset.clef;
+        nextQuestion();
+      });
+    });
+
+    document.getElementById('rangeSelect').addEventListener('change', (e) => {
+      state.range = e.target.value;
+      nextQuestion();
+    });
+    document.getElementById('toggleAnchors').addEventListener('change', (e) => {
+      state.showAnchors = e.target.checked;
+      renderStaff();
+    });
+    document.getElementById('toggleSound').addEventListener('change', (e) => {
+      state.sound = e.target.checked;
+    });
+    document.getElementById('toggleAutoNext').addEventListener('change', (e) => {
+      state.autoNext = e.target.checked;
+    });
+
+    document.getElementById('btnReplay').addEventListener('click', () => {
+      if (state.current) playPianoNote(dToInfo(state.current.d).freq);
+    });
+    document.getElementById('btnSkip').addEventListener('click', nextQuestion);
+    document.getElementById('btnNext').addEventListener('click', nextQuestion);
+    document.getElementById('btnResetStats').addEventListener('click', () => {
+      state.streak = 0; state.total = 0; state.correctCount = 0; state.totalTimeMs = 0;
+      state.weakMap = {};
+      persist();
+      updateStats();
+      renderWeakChips();
+    });
+
+    // 键盘快捷键
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+      if (e.key === ' ' || e.key === 'Enter') {
+        if (state.current && state.current.answered) {
+          e.preventDefault();
+          nextQuestion();
+        }
+        return;
+      }
+      if (state.mode === 'place') return;
+      const upper = e.key.toUpperCase();
+      const lIdx = LETTERS.indexOf(upper);
+      if (lIdx !== -1) { submitReadAnswer(lIdx); return; }
+      if (e.key >= '1' && e.key <= '7') { submitReadAnswer(Number(e.key) - 1); }
+    });
+
+    // 启动
+    initAnswerButtons();
+    updateStats();
+    renderWeakChips();
+    nextQuestion();
+  </script>
+</body>
+</html>
