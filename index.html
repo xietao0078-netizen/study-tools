@@ -291,6 +291,12 @@
       font-weight: 600;
     }
 
+    .feedback.slow {
+      background: var(--anchor-soft);
+      color: #b45309;
+      font-weight: 600;
+    }
+
     .next-btn {
       border: none;
       background: var(--ink);
@@ -499,6 +505,63 @@
       color: var(--ok);
     }
 
+    .chip.slow {
+      background: var(--anchor-soft);
+      color: #b45309;
+    }
+
+    .weak-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .analysis-drawer {
+      margin-top: 10px;
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .analysis-drawer.open { display: flex; }
+
+    .note-row {
+      display: grid;
+      grid-template-columns: 1.25fr 0.65fr 0.75fr 0.85fr 0.95fr;
+      gap: 6px;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #faf8f4;
+      font-size: 0.8rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .note-row.head {
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 2px 10px;
+    }
+
+    .tag-mini {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .tag-mini.ok { background: var(--ok-soft); color: var(--ok); }
+    .tag-mini.slow { background: var(--anchor-soft); color: #b45309; }
+    .tag-mini.err { background: var(--err-soft); color: var(--err); }
+
     .history-section {
       margin-top: 14px;
       padding-top: 12px;
@@ -656,7 +719,7 @@
         <h1>五线谱识谱与锚点训练器</h1>
         <div class="subtitle">7 个镜面对称锚点 · 双向抽测 · 实时钢琴音高 · 错音专攻</div>
       </div>
-      <span class="badge-ver">v1.3 · 阶段一（精准计时 + 云同步）</span>
+      <span class="badge-ver">v1.4 · 阶段一（单音耗时分析 + 重点训练）</span>
     </header>
 
     <!-- Cloud Sync Card -->
@@ -728,7 +791,7 @@
             <option value="near_anchors">锚点周边（±2 步 · 新手提速）</option>
             <option value="core" selected>巴赫 / 849 常用音域（C2–C6）</option>
             <option value="extended">加线扩展音域（A1–E6）</option>
-            <option value="weak">专攻高频错音</option>
+            <option value="weak">🎯 重点训练（错音 + 慢音 &gt;2s）</option>
           </select>
         </label>
 
@@ -796,18 +859,28 @@
       </div>
     </div>
 
-    <!-- Weak Notes & Practice History -->
+    <!-- Weak Notes, Slow Note Analysis & Practice History -->
     <div class="card">
-      <div class="weak-panel">
-        <div class="weak-chips" id="weakChips">
-          <strong style="color:var(--ink);">易错音记录：</strong>
-          <span class="chip empty">暂无错音，继续保持！</span>
+      <div class="weak-panel" style="align-items:flex-start;">
+        <div class="weak-rows">
+          <div class="weak-chips" id="weakChips">
+            <strong style="color:var(--ink);">高频错音：</strong>
+            <span class="chip empty">暂无错音，继续保持！</span>
+          </div>
+          <div class="weak-chips" id="slowChips">
+            <strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>
+            <span class="chip empty">暂无慢音，反应很快！</span>
+          </div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn-primary-sm" id="btnCopyReport">📋 复制今日战报</button>
+          <button class="btn-primary-sm" id="btnFocusDrill">🎯 重点训练弱项</button>
+          <button class="icon-btn" id="btnToggleAnalysis">📊 单音耗时表</button>
+          <button class="icon-btn" id="btnCopyReport">📋 复制战报</button>
           <button class="icon-btn" id="btnResetStats">重置统计</button>
         </div>
       </div>
+
+      <div class="analysis-drawer" id="analysisDrawer"></div>
 
       <div class="history-section">
         <div class="history-header">
@@ -1051,8 +1124,10 @@
     }
 
     function emptyDeviceBucket(name) {
-      return { name: name || syncCfg.deviceName, bestStreak: 0, daily: {}, weak: {} };
+      return { name: name || syncCfg.deviceName, bestStreak: 0, daily: {}, weak: {}, notes: {} };
     }
+
+    const SLOW_THRESHOLD_MS = 2000; // 超过 2.0 秒判定为不熟练慢音
 
     // 兼容迁移 v1.1 旧数据到当前设备账本
     const initialDevices = saved.devices ? JSON.parse(JSON.stringify(saved.devices)) : {};
@@ -1092,6 +1167,8 @@
       totalTimeMs: 0,
       daily: {},
       weakMap: {},
+      noteStats: {}, // key -> { count, correct, timeMs, avgMs, recentAvgMs, isSlow }
+      slowMap: {},   // key -> { recentAvgMs, avgMs, count, acc }
 
       unsyncedAnswers: 0,
       syncing: false,
@@ -1107,6 +1184,7 @@
       let total = 0, correctCount = 0, totalTimeMs = 0, bestStreak = 0;
       const daily = {};
       const weakRaw = {};
+      const notesRaw = {};
 
       for (const dev of Object.values(state.devices)) {
         if (!dev) continue;
@@ -1128,6 +1206,15 @@
           weakRaw[k].miss += Number(w.miss) || 0;
           weakRaw[k].hit += Number(w.hit) || 0;
         }
+        for (const [k, n] of Object.entries(dev.notes || {})) {
+          if (!notesRaw[k]) notesRaw[k] = { count: 0, correct: 0, timeMs: 0, recent: [] };
+          notesRaw[k].count += Number(n.count) || 0;
+          notesRaw[k].correct += Number(n.correct) || 0;
+          notesRaw[k].timeMs += Number(n.timeMs) || 0;
+          if (Array.isArray(n.recent)) {
+            notesRaw[k].recent.push(...n.recent);
+          }
+        }
       }
 
       const weakMap = {};
@@ -1136,12 +1223,37 @@
         if (net > 0) weakMap[k] = net;
       }
 
+      const noteStats = {};
+      const slowMap = {};
+      for (const [k, n] of Object.entries(notesRaw)) {
+        if (n.count <= 0) continue;
+        const avgMs = n.timeMs / n.count;
+        // 合并多设备近期作答记录，按时间取最新 5 次计算近期均时
+        const dedup = new Map();
+        for (const item of n.recent) {
+          if (item && typeof item.ms === 'number') dedup.set(item.t, item);
+        }
+        const recentSlice = Array.from(dedup.values()).sort((a, b) => a.t - b.t).slice(-5);
+        const recentAvgMs = recentSlice.length
+          ? recentSlice.reduce((s, r) => s + r.ms, 0) / recentSlice.length
+          : avgMs;
+        const acc = Math.round((n.correct / n.count) * 100);
+        const isSlow = recentAvgMs > SLOW_THRESHOLD_MS;
+
+        noteStats[k] = { count: n.count, correct: n.correct, acc, timeMs: n.timeMs, avgMs, recentAvgMs, isSlow };
+        if (isSlow) {
+          slowMap[k] = { recentAvgMs, avgMs, count: n.count, acc };
+        }
+      }
+
       state.total = total;
       state.correctCount = correctCount;
       state.totalTimeMs = totalTimeMs;
       state.bestStreak = Math.max(bestStreak, state.streak);
       state.daily = daily;
       state.weakMap = weakMap;
+      state.noteStats = noteStats;
+      state.slowMap = slowMap;
     }
 
     function mergeDeviceBuckets(localDevs, remoteDevs) {
@@ -1154,7 +1266,8 @@
           name: (id === syncCfg.deviceId ? syncCfg.deviceName : (b.name || a.name || id)),
           bestStreak: Math.max(Number(a.bestStreak) || 0, Number(b.bestStreak) || 0),
           daily: {},
-          weak: {}
+          weak: {},
+          notes: {}
         };
         const dates = new Set([...Object.keys(a.daily || {}), ...Object.keys(b.daily || {})]);
         for (const dt of dates) {
@@ -1173,6 +1286,22 @@
           out.weak[k] = {
             miss: Math.max(Number(wa.miss) || 0, Number(wb.miss) || 0),
             hit: Math.max(Number(wa.hit) || 0, Number(wb.hit) || 0)
+          };
+        }
+        const noteKeys = new Set([...Object.keys(a.notes || {}), ...Object.keys(b.notes || {})]);
+        for (const k of noteKeys) {
+          const na = (a.notes && a.notes[k]) || { count: 0, correct: 0, timeMs: 0, recent: [] };
+          const nb = (b.notes && b.notes[k]) || { count: 0, correct: 0, timeMs: 0, recent: [] };
+          const recMap = new Map();
+          for (const item of [...(na.recent || []), ...(nb.recent || [])]) {
+            if (item && typeof item.t === 'number') recMap.set(item.t, item);
+          }
+          const recent = Array.from(recMap.values()).sort((x, y) => x.t - y.t).slice(-5);
+          out.notes[k] = {
+            count: Math.max(Number(na.count) || 0, Number(nb.count) || 0),
+            correct: Math.max(Number(na.correct) || 0, Number(nb.correct) || 0),
+            timeMs: Math.max(Number(na.timeMs) || 0, Number(nb.timeMs) || 0),
+            recent
           };
         }
         merged[id] = out;
@@ -1283,8 +1412,16 @@
         }
 
         // 3. 构造完整可读 JSON 推送回私有知识库
+        const slowNotesSummary = {};
+        for (const [k, s] of Object.entries(state.slowMap)) {
+          slowNotesSummary[k] = {
+            recentAvgSec: Number((s.recentAvgMs / 1000).toFixed(2)),
+            count: s.count,
+            accuracy: s.acc + '%'
+          };
+        }
         const payload = {
-          schemaVersion: 2,
+          schemaVersion: 3,
           updatedAt: new Date().toISOString(),
           summary: {
             total: state.total,
@@ -1292,7 +1429,8 @@
             accuracy: state.total ? Math.round((state.correctCount / state.total) * 100) + '%' : '0%',
             avgSec: state.total ? Number((state.totalTimeMs / state.total / 1000).toFixed(2)) : 0,
             bestStreak: state.bestStreak,
-            weakNotes: state.weakMap
+            weakNotes: state.weakMap,
+            slowNotesOver2s: slowNotesSummary
           },
           dailySummary: state.daily,
           devices: state.devices
@@ -1570,13 +1708,15 @@
       }
 
       if (state.range === 'weak') {
-        for (const [k, cnt] of Object.entries(state.weakMap)) {
-          if (cnt > 0) {
-            const [c, ds] = k.split(':');
-            if (clefs.includes(c)) {
-              for (let i = 0; i < Math.min(cnt, 5); i++) pool.push({ clef: c, d: Number(ds) });
-            }
-          }
+        const focusKeys = new Set([...Object.keys(state.weakMap), ...Object.keys(state.slowMap)]);
+        for (const k of focusKeys) {
+          const [c, ds] = k.split(':');
+          if (!clefs.includes(c)) continue;
+          const errW = Math.min(state.weakMap[k] || 0, 4);
+          const slowInfo = state.slowMap[k];
+          const slowW = slowInfo ? (slowInfo.recentAvgMs > 3500 ? 4 : 2) : 0;
+          const weight = Math.min(6, Math.max(1, errW + slowW));
+          for (let i = 0; i < weight; i++) pool.push({ clef: c, d: Number(ds) });
         }
         if (pool.length > 0) return pool;
       }
@@ -1805,11 +1945,22 @@
       const myDev = state.devices[syncCfg.deviceId];
       myDev.name = syncCfg.deviceName;
       if (!myDev.daily[today]) myDev.daily[today] = { total: 0, correct: 0, timeMs: 0 };
+      if (!myDev.notes) myDev.notes = {};
+      if (!myDev.notes[key]) myDev.notes[key] = { count: 0, correct: 0, timeMs: 0, recent: [] };
 
       state.current.answered = true;
       state.current.wasCorrect = isCorrect;
       myDev.daily[today].total += 1;
       myDev.daily[today].timeMs += cappedElapsedMs;
+
+      // 记录单音累计与近期 5 次作答耗时
+      const noteRec = myDev.notes[key];
+      noteRec.count += 1;
+      noteRec.timeMs += cappedElapsedMs;
+      if (isCorrect) noteRec.correct += 1;
+      if (!Array.isArray(noteRec.recent)) noteRec.recent = [];
+      noteRec.recent.push({ t: Date.now(), ms: Math.round(cappedElapsedMs), ok: isCorrect });
+      if (noteRec.recent.length > 5) noteRec.recent = noteRec.recent.slice(-5);
 
       if (isCorrect) {
         myDev.daily[today].correct += 1;
@@ -1839,9 +1990,13 @@
       const fb = document.getElementById('feedbackBar');
       const fbTxt = document.getElementById('feedbackText');
       const btnNext = document.getElementById('btnNext');
+      const isSlowThisTime = isCorrect && rawElapsedMs > SLOW_THRESHOLD_MS;
 
-      fb.className = `feedback ${isCorrect ? 'ok' : 'err'}`;
-      fbTxt.textContent = `${isCorrect ? '✓ 正确' : '✗ 再校准'}（${secStr}s）· ${detailText}`;
+      fb.className = `feedback ${!isCorrect ? 'err' : (isSlowThisTime ? 'slow' : 'ok')}`;
+      const statusLabel = !isCorrect
+        ? '✗ 再校准'
+        : (isSlowThisTime ? '✓ 正确但偏慢（>2s，已重点关注）' : '✓ 熟练');
+      fbTxt.textContent = `${statusLabel}（${secStr}s）· ${detailText}`;
       btnNext.style.display = 'inline-block';
 
       if (isCorrect && state.autoNext && state.timerState === 'running') {
@@ -1926,7 +2081,14 @@
           const [clef, ds] = k.split(':');
           return `${clef === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${cnt}次)`;
         });
-      return `【五线谱识谱战报 ${today}】今日完成 ${d.total} 题，正确率 ${acc}，平均反应 ${avg}，历史最高连胜 ${state.bestStreak}（累计 ${state.total} 题）。高频易错音：${weakTop.length ? weakTop.join('、') : '无'}。请帮我归档进今天的知识库打卡记录！`;
+      const slowTop = Object.entries(state.slowMap)
+        .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs)
+        .slice(0, 5)
+        .map(([k, s]) => {
+          const [clef, ds] = k.split(':');
+          return `${clef === 'treble' ? '高音' : '低音'}${dToInfo(Number(ds)).name}(${(s.recentAvgMs / 1000).toFixed(1)}s)`;
+        });
+      return `【五线谱识谱战报 ${today}】今日完成 ${d.total} 题，正确率 ${acc}，平均反应 ${avg}，历史最高连胜 ${state.bestStreak}（累计 ${state.total} 题）。高频错音：${weakTop.length ? weakTop.join('、') : '无'}；不熟练慢音(>2s)：${slowTop.length ? slowTop.join('、') : '无'}。请帮我归档进今天的知识库打卡记录！`;
     }
 
     function applySavedPrefsToUI() {
@@ -1943,28 +2105,89 @@
     }
 
     function renderWeakChips() {
+      // 1. 高频错音
       const wrap = document.getElementById('weakChips');
       const entries = Object.entries(state.weakMap)
         .filter(([, cnt]) => cnt > 0)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 8);
 
-      wrap.innerHTML = '<strong style="color:var(--ink);">易错音记录：</strong>';
+      wrap.innerHTML = '<strong style="color:var(--ink);">高频错音：</strong>';
       if (!entries.length) {
         const s = document.createElement('span');
         s.className = 'chip empty';
         s.textContent = '暂无错音，状态很稳！';
         wrap.appendChild(s);
+      } else {
+        for (const [k, cnt] of entries) {
+          const [clef, dStr] = k.split(':');
+          const info = dToInfo(Number(dStr));
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} (${cnt}次)`;
+          wrap.appendChild(chip);
+        }
+      }
+
+      // 2. 不熟练慢音（近 5 次平均 > 2.0s）
+      const slowWrap = document.getElementById('slowChips');
+      if (slowWrap) {
+        const slowEntries = Object.entries(state.slowMap)
+          .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs)
+          .slice(0, 8);
+        slowWrap.innerHTML = '<strong style="color:var(--ink);">不熟练慢音（&gt;2.0s）：</strong>';
+        if (!slowEntries.length) {
+          const s = document.createElement('span');
+          s.className = 'chip empty';
+          s.textContent = '暂无慢音，反应很快！';
+          slowWrap.appendChild(s);
+        } else {
+          for (const [k, infoStat] of slowEntries) {
+            const [clef, dStr] = k.split(':');
+            const info = dToInfo(Number(dStr));
+            const chip = document.createElement('span');
+            chip.className = 'chip slow';
+            chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} · ${(infoStat.recentAvgMs / 1000).toFixed(1)}s`;
+            slowWrap.appendChild(chip);
+          }
+        }
+      }
+
+      // 3. 单音耗时详细分析表（若已展开则同步刷新）
+      renderNoteAnalysisTable();
+    }
+
+    function renderNoteAnalysisTable() {
+      const drawer = document.getElementById('analysisDrawer');
+      if (!drawer) return;
+      const all = Object.entries(state.noteStats)
+        .sort((a, b) => b[1].recentAvgMs - a[1].recentAvgMs);
+
+      if (!all.length) {
+        drawer.innerHTML = '<div style="color:var(--muted); font-size:0.82rem; padding:6px 2px;">完成几道题后，这里会按反应速度从慢到快列出每一个音的详细数据。</div>';
         return;
       }
-      for (const [k, cnt] of entries) {
+
+      let html = '<div class="note-row head"><span>音符（谱号）</span><span>次数</span><span>正确率</span><span>近期均时</span><span>熟练度</span></div>';
+      for (const [k, st] of all) {
         const [clef, dStr] = k.split(':');
         const info = dToInfo(Number(dStr));
-        const chip = document.createElement('span');
-        chip.className = 'chip';
-        chip.textContent = `${clef === 'treble' ? '高音' : '低音'} ${info.name} (${cnt}次)`;
-        wrap.appendChild(chip);
+        const hasErr = (state.weakMap[k] || 0) > 0;
+        const sec = (st.recentAvgMs / 1000).toFixed(2) + 's';
+        let badge = '<span class="tag-mini ok">✓ 熟练</span>';
+        if (hasErr && st.isSlow) badge = '<span class="tag-mini err">错+慢</span>';
+        else if (hasErr) badge = '<span class="tag-mini err">易错</span>';
+        else if (st.isSlow) badge = '<span class="tag-mini slow">慢 &gt;2s</span>';
+
+        html += `<div class="note-row">
+          <span><strong>${clef === 'treble' ? '高音' : '低音'} ${info.name}</strong> (${info.solfege})</span>
+          <span>${st.count}</span>
+          <span>${st.acc}%</span>
+          <span>${sec}</span>
+          <span>${badge}</span>
+        </div>`;
       }
+      drawer.innerHTML = html;
     }
 
     /* ============================================================
@@ -2071,6 +2294,30 @@
     document.getElementById('btnNext').addEventListener('click', () => {
       if (state.timerState === 'running') nextQuestion();
       else startOrResumeTimer();
+    });
+
+    document.getElementById('btnFocusDrill').addEventListener('click', () => {
+      const hasFocus = Object.keys(state.weakMap).length > 0 || Object.keys(state.slowMap).length > 0;
+      if (!hasFocus) {
+        alert('目前还没有错音或超过 2 秒的慢音，先在常用音域练几题积累数据吧！');
+        return;
+      }
+      state.range = 'weak';
+      document.getElementById('rangeSelect').value = 'weak';
+      if (state.mode === 'anchors') {
+        state.mode = 'read';
+        applySavedPrefsToUI();
+      }
+      persist();
+      if (state.timerState === 'running') nextQuestion();
+      else startOrResumeTimer();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    document.getElementById('btnToggleAnalysis').addEventListener('click', () => {
+      const drawer = document.getElementById('analysisDrawer');
+      drawer.classList.toggle('open');
+      if (drawer.classList.contains('open')) renderNoteAnalysisTable();
     });
 
     document.getElementById('btnCopyReport').addEventListener('click', async () => {
